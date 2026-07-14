@@ -10,6 +10,7 @@
 - [x] Release app is packaged, ad-hoc signed, installed, and launched.
 - [x] Snapshot CLI returns nonzero live data when Codex is active.
 - [x] GitHub repository is created and the verified commit is pushed/read back.
+- [ ] Universal DMG and one-command release install are published and verified.
 
 ## Verification record
 

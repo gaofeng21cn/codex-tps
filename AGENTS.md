@@ -23,7 +23,9 @@ content.
 - Test: `swift test`
 - Snapshot: `swift run codex-tps-snapshot --json`
 - Package: `./scripts/build-app.sh`
+- Universal DMG: `./scripts/build-dmg.sh`
 - Install: `./scripts/install.sh`
+- Install latest release: `./scripts/install-release.sh`
 
 Runtime and packaging claims require a real installed-app readback in addition
 to unit tests.

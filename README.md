@@ -10,6 +10,7 @@
 
 <p align="center">
   <a href="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml"><img src="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/gaofeng21cn/codex-tps/releases/latest"><img src="https://img.shields.io/github/v/release/gaofeng21cn/codex-tps" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/macOS-13%2B-black.svg" alt="macOS 13 or later">
 </p>
@@ -42,12 +43,35 @@ not a per-streaming-chunk speedometer.
 ### Requirements
 
 - macOS 13 Ventura or later
-- Xcode Command Line Tools (`xcode-select --install`)
 - Codex session logs under `~/.codex/sessions`, or `$CODEX_HOME/sessions`
 
 Codex TPS does not need an API key of its own.
 
-### Install
+### Quick install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | bash
+```
+
+The installer downloads the latest universal DMG, verifies its published
+SHA-256 checksum, installs the app in `/Applications`, and launches it. Use a
+per-user destination or skip launch with environment variables:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | CODEX_TPS_INSTALL_DIR="$HOME/Applications" CODEX_TPS_NO_LAUNCH=1 bash
+```
+
+Prefer a graphical install? Download
+[`Codex-TPS.dmg`](https://github.com/gaofeng21cn/codex-tps/releases/latest/download/Codex-TPS.dmg)
+from the latest release, open it, and drag the app to Applications.
+
+Release builds are ad-hoc signed but not notarized by Apple. When installing the
+DMG through Finder, macOS may require the standard right-click **Open** flow or
+approval in **System Settings > Privacy & Security**.
+
+### Build from source
+
+Requires Xcode Command Line Tools (`xcode-select --install`).
 
 ```bash
 git clone https://github.com/gaofeng21cn/codex-tps.git
@@ -55,15 +79,13 @@ cd codex-tps
 ./scripts/install.sh
 ```
 
-This builds, ad-hoc signs, installs, and launches `/Applications/Codex TPS.app`.
+This builds for the current Mac, ad-hoc signs, installs, and launches the app.
 To install without launching, pass `--no-launch`. A custom destination is also
 supported:
 
 ```bash
 CODEX_TPS_INSTALL_DIR="$HOME/Applications" ./scripts/install.sh
 ```
-
-The current project is source-distributed and is not notarized by Apple.
 
 ### Metrics
 
@@ -110,6 +132,7 @@ CODEX_HOME=/path/to/codex-home swift run codex-tps-snapshot --json
 xcrun swift-format lint --recursive Sources Tests Package.swift
 swift test
 ./scripts/build-app.sh
+./scripts/build-dmg.sh
 ```
 
 Architecture and accounting invariants are documented in
@@ -137,9 +160,25 @@ Codex TPS 是一个仅在本机运行的 macOS 菜单栏小工具。它增量读
 选择。菜单栏数字固定为最近 1 分钟平均值。由于 Codex 在一次模型请求完成后
 才写入 token 用量，它反映的是完成时吞吐量，不是逐个流式 chunk 的瞬时速度。
 
-### 安装
+### 一键安装
 
-系统要求为 macOS 13 或更高版本，并已安装 Xcode Command Line Tools。
+系统要求为 macOS 13 或更高版本。应用本身不需要 API Key。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | bash
+```
+
+安装器会下载 latest release 中同时支持 Apple Silicon 和 Intel Mac 的 DMG，
+校验官方发布的 SHA-256，然后安装到 `/Applications` 并启动。也可以直接下载
+[`Codex-TPS.dmg`](https://github.com/gaofeng21cn/codex-tps/releases/latest/download/Codex-TPS.dmg)，
+打开后将应用拖入 Applications。
+
+Release 使用 ad-hoc 签名，尚未进行 Apple notarization。通过 Finder 安装时，
+macOS 可能要求右键选择“打开”，或在“系统设置 > 隐私与安全性”中确认。
+
+### 从源码安装
+
+源码构建需要 Xcode Command Line Tools（`xcode-select --install`）。
 
 ```bash
 git clone https://github.com/gaofeng21cn/codex-tps.git
@@ -147,9 +186,8 @@ cd codex-tps
 ./scripts/install.sh
 ```
 
-应用会安装到 `/Applications/Codex TPS.app` 并立即启动。当前版本从源码构建、
-使用 ad-hoc 签名，尚未进行 Apple notarization。应用本身不需要 API Key；如果
-Codex Home 不在默认位置，可通过 `CODEX_HOME` 指定。
+应用会安装到 `/Applications/Codex TPS.app` 并立即启动。如果 Codex Home 不在
+默认位置，可通过 `CODEX_HOME` 指定。
 
 ### 隐私与统计边界
 
@@ -164,6 +202,7 @@ Codex Home 不在默认位置，可通过 `CODEX_HOME` 指定。
 swift test
 swift run codex-tps-snapshot --json
 ./scripts/build-app.sh
+./scripts/build-dmg.sh
 ```
 
 项目采用 [MIT License](LICENSE)。这是非官方社区项目，与 OpenAI 不存在隶属、
