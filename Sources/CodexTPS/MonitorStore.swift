@@ -8,6 +8,7 @@ final class MonitorStore: ObservableObject {
   @Published private(set) var snapshot: UsageSnapshot
   @Published private(set) var isRefreshing = false
   @Published private(set) var launchAtLoginEnabled = false
+  @Published private(set) var selectedWindow: MetricWindow
   @Published private(set) var refreshCadence: RefreshCadence
   @Published private(set) var settingsError: String?
 
@@ -15,10 +16,13 @@ final class MonitorStore: ObservableObject {
 
   private let scanner: SessionScanner
   private var refreshLoop: Task<Void, Never>?
+  private static let selectedWindowDefaultsKey = "selectedMetricWindow"
   private static let refreshCadenceDefaultsKey = "refreshCadenceSeconds"
 
   init(codexHome: URL = SessionScanner.defaultCodexHome()) {
+    let savedWindow = UserDefaults.standard.string(forKey: Self.selectedWindowDefaultsKey)
     let savedCadence = UserDefaults.standard.double(forKey: Self.refreshCadenceDefaultsKey)
+    selectedWindow = savedWindow.flatMap(MetricWindow.init(rawValue:)) ?? .oneMinute
     refreshCadence = RefreshCadence(rawValue: savedCadence) ?? .fifteenSeconds
     scanner = SessionScanner(codexHome: codexHome)
     sessionsURL = codexHome.appendingPathComponent("sessions", isDirectory: true)
@@ -28,7 +32,8 @@ final class MonitorStore: ObservableObject {
 
   var menuBarTitle: String {
     guard snapshot.status == .ready else { return "-- t/s" }
-    return "\(RateFormatter.compact(snapshot.oneMinute.tokensPerSecond)) t/s"
+    let metrics = selectedWindow.metrics(from: snapshot)
+    return "\(RateFormatter.compact(metrics.tokensPerSecond)) t/s"
   }
 
   func start() {
@@ -41,6 +46,12 @@ final class MonitorStore: ObservableObject {
     refreshCadence = cadence
     UserDefaults.standard.set(cadence.rawValue, forKey: Self.refreshCadenceDefaultsKey)
     scheduleRefreshLoop()
+  }
+
+  func setMetricWindow(_ window: MetricWindow) {
+    guard window != selectedWindow else { return }
+    selectedWindow = window
+    UserDefaults.standard.set(window.rawValue, forKey: Self.selectedWindowDefaultsKey)
   }
 
   private func scheduleRefreshLoop() {

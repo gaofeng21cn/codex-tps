@@ -5,7 +5,7 @@
 <h1 align="center">Codex TPS</h1>
 
 <p align="center">
-  A private, local-only macOS menu bar monitor for Codex token throughput.
+  A privacy-first macOS menu bar monitor for local Codex token throughput.
 </p>
 
 <p align="center">
@@ -34,11 +34,13 @@ window in memory, and never sends conversation data anywhere.
 - Requests per minute, active sessions, and cache ratio
 - `5s`, `15s`, `30s`, or `1min` auto-refresh cadence
 - Manual refresh, session-folder shortcut, and launch at login
+- Automatic GitHub release checks and checksum-verified one-click updates
 - A JSON snapshot CLI for scripts and integrations
 
-The menu bar always shows the rolling one-minute average. Codex records usage
-when a model request completes, so the number is completion-time throughput,
-not a per-streaming-chunk speedometer.
+The compact menu bar readout follows the window selected in the panel and
+remembers that selection across launches. Codex records usage when a model
+request completes, so the number is completion-time throughput, not a
+per-streaming-chunk speedometer.
 
 ### Requirements
 
@@ -54,8 +56,10 @@ curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/
 ```
 
 The installer downloads the latest universal DMG, verifies its published
-SHA-256 checksum, installs the app in `/Applications`, and launches it. Use a
-per-user destination or skip launch with environment variables:
+SHA-256 checksum, stages and verifies the app before replacing an existing
+installation, then installs it in `/Applications` and launches it. A failed
+replacement restores the previous app. Use a per-user destination or skip
+launch with environment variables:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | CODEX_TPS_INSTALL_DIR="$HOME/Applications" CODEX_TPS_NO_LAUNCH=1 bash
@@ -101,14 +105,21 @@ CODEX_TPS_INSTALL_DIR="$HOME/Applications" ./scripts/install.sh
 The parser uses `last_token_usage` as the request increment and cumulative
 `total_token_usage` to detect duplicate or replayed history. Forked and subagent
 sessions are filtered with lifecycle state because inherited history may be
-rewritten with the child session's timestamp.
+rewritten with the child session's timestamp. Legacy UUIDv4 turns inside replay
+remain excluded until a verifiable UUIDv7 child turn begins.
 
 ### Privacy and scope
 
 - Reads only structural records needed for usage accounting
 - Does not persist or display prompts, responses, or tool-call bodies
-- Contains no network client, analytics SDK, account login, or cloud service
+- Uses the network only to check GitHub release metadata and download an update
+- Contains no analytics SDK, account login, or conversation-data upload
 - Keeps rolling usage state in memory only
+
+The app checks for a release after launch and every six hours while running. A
+new version is installed only after the user clicks **Update now**. The DMG must
+match the release's published SHA-256 checksum and expected version before the
+installed app is replaced.
 
 Codex TPS is operational telemetry, not billing data. It reports usage visible
 in local Codex logs and cannot prove which API key was charged. Log formats are
@@ -157,8 +168,9 @@ Codex TPS 是一个仅在本机运行的 macOS 菜单栏小工具。它增量读
 活跃会话和缓存占比等统计。
 
 刷新节奏可选 `5 秒 / 15 秒 / 30 秒 / 1 分钟`，默认 15 秒并会记住上次
-选择。菜单栏数字固定为最近 1 分钟平均值。由于 Codex 在一次模型请求完成后
-才写入 token 用量，它反映的是完成时吞吐量，不是逐个流式 chunk 的瞬时速度。
+选择。菜单栏数字会跟随面板当前选择的统计区间，并在重启后保留该选择。由于
+Codex 在一次模型请求完成后才写入 token 用量，它反映的是完成时吞吐量，不是
+逐个流式 chunk 的瞬时速度。
 
 ### 一键安装
 
@@ -169,9 +181,14 @@ curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/
 ```
 
 安装器会下载 latest release 中同时支持 Apple Silicon 和 Intel Mac 的 DMG，
-校验官方发布的 SHA-256，然后安装到 `/Applications` 并启动。也可以直接下载
+校验官方发布的 SHA-256，在目标目录完成暂存和签名校验后原子替换旧版本；失败
+会自动回滚。默认安装到 `/Applications` 并启动。也可以直接下载
 [`Codex-TPS.dmg`](https://github.com/gaofeng21cn/codex-tps/releases/latest/download/Codex-TPS.dmg)，
 打开后将应用拖入 Applications。
+
+应用启动后会自动检查 GitHub latest release，运行期间每 6 小时检查一次；发现
+新版本后由用户点击“立即更新”，不会无提示退出或强制更新。也可随时点击面板
+顶部的检查更新按钮。
 
 Release 使用 ad-hoc 签名，尚未进行 Apple notarization。通过 Finder 安装时，
 macOS 可能要求右键选择“打开”，或在“系统设置 > 隐私与安全性”中确认。
@@ -192,7 +209,8 @@ cd codex-tps
 ### 隐私与统计边界
 
 - 只解析 token 统计及去重所需的结构记录，不读取或展示对话正文
-- 没有网络请求、分析 SDK、登录流程或云端依赖
+- 网络仅用于检查 GitHub Release 元数据和下载用户确认安装的更新
+- 没有分析 SDK、登录流程，也不会上传任何会话内容
 - 缓存 token 是输入子集，推理 token 是输出子集，不会重复计入总量
 - 本机日志统计用于运行观察，不等同于服务端账单，也不能证明具体由哪个 API Key 扣费
 

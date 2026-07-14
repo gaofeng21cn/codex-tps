@@ -11,6 +11,9 @@
 - [x] Snapshot CLI returns nonzero live data when Codex is active.
 - [x] GitHub repository is created and the verified commit is pushed/read back.
 - [x] Universal DMG and one-command release install are published and verified.
+- [x] The menu bar follows the persisted panel window without extra label text.
+- [x] Automatic release checks and a user-confirmed update path are implemented.
+- [ ] `v0.2.0` is published and verified through a real remote update install.
 
 ## Verification record
 
@@ -28,3 +31,12 @@
 - `v0.1.0` published a checksum-verified universal DMG. The documented remote
   one-command installer installed, launched, and passed signature, architecture,
   version, and no-network-socket readback.
+- The `v0.2.0` candidate passed 12 tests, strict Swift formatting, ShellCheck,
+  Actionlint, universal DMG verification, and installed-app signature readback.
+- A real 50 MB subagent log containing 10,047 replayed token events and mixed
+  UUIDv4/UUIDv7 turns reproduced the inflated 30-minute window. After the state
+  machine fix, a fresh scan returned smooth `1m/5m/30m/1h` rates and 12-15
+  requests per minute instead of about 196.
+- Computer Use verified the selected window updates immediately, survives an
+  app restart, renders without overlap, and reports the latest release without
+  using the rate-limited GitHub API.
