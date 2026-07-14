@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint
+        run: xcrun swift-format lint --recursive Sources Tests Package.swift
+      - name: Test
+        run: swift test
+      - name: Package app
+        run: ./scripts/build-app.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-tps-app
+          path: dist/Codex TPS.app
