@@ -23,6 +23,8 @@ mkdir -p "$APP_DIR/Contents/Resources"
 ditto "$BIN_DIR/CodexTPS" "$APP_DIR/Contents/MacOS/CodexTPS"
 ditto "$ROOT_DIR/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 ditto "$ROOT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
+ditto "$ROOT_DIR/scripts/install-release.sh" "$APP_DIR/Contents/Resources/install-release.sh"
+chmod 755 "$APP_DIR/Contents/Resources/install-release.sh"
 
 if [[ -n "${CODEX_TPS_ARCHS:-}" ]]; then
   for ARCH in ${=CODEX_TPS_ARCHS}; do

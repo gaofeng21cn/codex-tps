@@ -14,8 +14,11 @@ content.
 - `total_tokens` is authoritative for throughput. Cached input and reasoning
   output are subsets used for breakdowns and must not be added again.
 - Forked and subagent logs can rewrite parent history timestamps during replay.
-  Preserve the fork state machine and cross-file deduplication tests.
+  Legacy replay can mix UUIDv4 turn IDs with current UUIDv7 IDs. Preserve the
+  fork state machine and cross-file deduplication tests.
 - Do not persist, log, transmit, or render prompt or response bodies.
+- Network access is limited to GitHub release metadata and assets for automatic
+  update checks and user-confirmed installation.
 
 ## Development
 

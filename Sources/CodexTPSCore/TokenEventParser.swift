@@ -271,13 +271,14 @@ public enum TokenEventParser {
   }
 
   private static func childTurnStartsOwnSession(state: TokenParserState, turnID: String?) -> Bool {
-    guard state.replaySessionID != nil,
+    guard state.replaySessionID != nil else { return true }
+    guard
       let childID = state.childSessionID,
       let turnID,
       let childPrefix = uuidV7MillisecondPrefix(childID),
       let turnPrefix = uuidV7MillisecondPrefix(turnID)
     else {
-      return true
+      return false
     }
 
     if turnPrefix > childPrefix { return true }

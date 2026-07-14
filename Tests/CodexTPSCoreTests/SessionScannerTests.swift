@@ -113,6 +113,7 @@ final class SessionScannerTests: XCTestCase {
     let replayTimestamp = now.addingTimeInterval(-5).formatted(.iso8601)
     let childID = "019f5e41-117d-7000-8000-000000000001"
     let childTurnID = "019f5e41-117e-7000-8000-000000000001"
+    let legacyTurnID = "49b1eb54-d964-4272-8c71-01c9eed13679"
     let parentEvent =
       #"{"timestamp":"\#(parentTimestamp)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}"#
       + "\n"
@@ -122,6 +123,8 @@ final class SessionScannerTests: XCTestCase {
       [
         #"{"timestamp":"\#(replayTimestamp)","type":"session_meta","payload":{"id":"\#(childID)","forked_from_id":"parent","thread_source":"subagent","model_provider":"test-provider"}}"#,
         #"{"timestamp":"\#(replayTimestamp)","type":"session_meta","payload":{"id":"parent","thread_source":"user","model_provider":"test-provider"}}"#,
+        #"{"timestamp":"\#(replayTimestamp)","type":"event_msg","payload":{"type":"task_started","turn_id":"\#(legacyTurnID)"}}"#,
+        #"{"timestamp":"\#(replayTimestamp)","type":"turn_context","payload":{"turn_id":"\#(legacyTurnID)","model":"gpt-test"}}"#,
         #"{"timestamp":"\#(replayTimestamp)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}"#,
         #"{"timestamp":"\#(replayTimestamp)","type":"event_msg","payload":{"type":"task_started","turn_id":"\#(childTurnID)"}}"#,
         #"{"timestamp":"\#(replayTimestamp)","type":"turn_context","payload":{"turn_id":"\#(childTurnID)","model":"gpt-test"}}"#,

@@ -3,16 +3,24 @@ import SwiftUI
 
 @MainActor
 final class CodexTPSAppDelegate: NSObject, NSApplicationDelegate {
-  private var previewStore: MonitorStore?
+  private var store: MonitorStore?
+  private var updateManager: UpdateManager?
   private var previewWindow: NSWindow?
 
+  func configure(store: MonitorStore, updateManager: UpdateManager) {
+    self.store = store
+    self.updateManager = updateManager
+  }
+
   func applicationDidFinishLaunching(_ notification: Notification) {
-    guard ProcessInfo.processInfo.arguments.contains("--preview-window") else { return }
+    guard ProcessInfo.processInfo.arguments.contains("--preview-window"),
+      let store,
+      let updateManager
+    else { return }
 
-    let store = MonitorStore()
-    store.start()
-
-    let panel = MonitorPanel().environmentObject(store)
+    let panel = MonitorPanel()
+      .environmentObject(store)
+      .environmentObject(updateManager)
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 380, height: 430),
       styleMask: [.titled, .closable],
@@ -24,7 +32,6 @@ final class CodexTPSAppDelegate: NSObject, NSApplicationDelegate {
     window.center()
     window.makeKeyAndOrderFront(nil)
 
-    previewStore = store
     previewWindow = window
     NSApplication.shared.activate(ignoringOtherApps: true)
   }
