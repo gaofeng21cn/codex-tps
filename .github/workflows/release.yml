@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check tag version
+        run: |
+          version="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
+          [[ "$GITHUB_REF_NAME" == "v$version" ]]
+      - name: Lint
+        run: xcrun swift-format lint --recursive Sources Tests Package.swift
+      - name: Test
+        run: swift test
+      - name: Build universal DMG
+        run: ./scripts/build-dmg.sh
+      - name: Verify release assets
+        run: |
+          cd dist
+          shasum -a 256 -c Codex-TPS.dmg.sha256
+          hdiutil verify Codex-TPS.dmg
+          lipo "Codex TPS.app/Contents/MacOS/CodexTPS" -verify_arch arm64 x86_64
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/Codex-TPS.dmg \
+            dist/Codex-TPS.dmg.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Codex TPS $GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag

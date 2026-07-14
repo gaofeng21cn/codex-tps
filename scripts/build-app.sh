@@ -7,8 +7,15 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_DIR="$DIST_DIR/$APP_NAME"
 
 cd "$ROOT_DIR"
-swift build -c release
-BIN_DIR="$(swift build -c release --show-bin-path)"
+BUILD_ARGS=(-c release --product CodexTPS)
+if [[ -n "${CODEX_TPS_ARCHS:-}" ]]; then
+  for ARCH in ${=CODEX_TPS_ARCHS}; do
+    BUILD_ARGS+=(--arch "$ARCH")
+  done
+fi
+
+swift build "${BUILD_ARGS[@]}"
+BIN_DIR="$(swift build "${BUILD_ARGS[@]}" --show-bin-path)"
 
 rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS"
@@ -16,6 +23,12 @@ mkdir -p "$APP_DIR/Contents/Resources"
 ditto "$BIN_DIR/CodexTPS" "$APP_DIR/Contents/MacOS/CodexTPS"
 ditto "$ROOT_DIR/Resources/Info.plist" "$APP_DIR/Contents/Info.plist"
 ditto "$ROOT_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/AppIcon.icns"
+
+if [[ -n "${CODEX_TPS_ARCHS:-}" ]]; then
+  for ARCH in ${=CODEX_TPS_ARCHS}; do
+    lipo "$APP_DIR/Contents/MacOS/CodexTPS" -verify_arch "$ARCH"
+  done
+fi
 
 plutil -lint "$APP_DIR/Contents/Info.plist"
 codesign --force --deep --sign - "$APP_DIR"
