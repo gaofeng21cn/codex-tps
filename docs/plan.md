@@ -13,7 +13,7 @@
 - [x] Universal DMG and one-command release install are published and verified.
 - [x] The menu bar follows the persisted panel window without extra label text.
 - [x] Automatic release checks and a user-confirmed update path are implemented.
-- [ ] `v0.2.0` is published and verified through a real remote update install.
+- [x] `v0.2.0` is published and verified through a real remote update install.
 
 ## Verification record
 
@@ -40,3 +40,13 @@
 - Computer Use verified the selected window updates immediately, survives an
   app restart, renders without overlap, and reports the latest release without
   using the rate-limited GitHub API.
+- `v0.2.0` was published from merge commit `ac74e29`; Release run
+  `29337022211` passed version matching, lint, tests, universal build, asset
+  verification, and release creation. The annotated tag dereferences to the
+  same commit as the published `main` at release time.
+- Freshly downloaded release assets matched their GitHub SHA-256 digests. The
+  documented remote installer replaced the existing app, launched version
+  `0.2.0 (2)`, and passed architecture, signature, embedded-installer, and live
+  metric readback with no staged or backup bundle left behind.
+- An isolated `0.1.0` app copy discovered `v0.2.0` through the production
+  release endpoint and rendered the user-confirmed "Update now" action.
