@@ -9,7 +9,7 @@
 - [x] Launch-at-login control, refresh, session-folder access, and quit work.
 - [x] Release app is packaged, ad-hoc signed, installed, and launched.
 - [x] Snapshot CLI returns nonzero live data when Codex is active.
-- [ ] GitHub repository is created and the verified commit is pushed/read back.
+- [x] GitHub repository is created and the verified commit is pushed/read back.
 
 ## Verification record
 
@@ -22,3 +22,5 @@
   cadence persistence, accessibility labels, and non-overlapping layout.
 - `/Applications/Codex TPS.app` passed plist and ad-hoc signature checks,
   launched as an `LSUIElement`, and had no network sockets.
+- `gaofeng21cn/codex-tps` was created as a public repository; local and remote
+  `main` SHAs matched after the initial push.
