@@ -10,9 +10,15 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-15
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v7
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun swift --version
+          xcrun --show-sdk-version
       - name: Check tag version
         run: |
           version="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
