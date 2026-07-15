@@ -21,9 +21,7 @@ struct CodexTPSApp: App {
 
   var body: some Scene {
     MenuBarExtra {
-      MonitorPanel()
-        .environmentObject(store)
-        .environmentObject(updateManager)
+      menuBarPanel
     } label: {
       HStack(spacing: 4) {
         Image(systemName: "waveform.path.ecg")
@@ -34,5 +32,21 @@ struct CodexTPSApp: App {
         "Codex token throughput, \(store.selectedWindow.rawValue), \(store.menuBarTitle)")
     }
     .menuBarExtraStyle(.window)
+  }
+
+  @ViewBuilder
+  private var menuBarPanel: some View {
+    if #available(macOS 15.0, *) {
+      panelContent
+        .containerBackground(.regularMaterial, for: .window)
+    } else {
+      panelContent
+    }
+  }
+
+  private var panelContent: some View {
+    MonitorPanel()
+      .environmentObject(store)
+      .environmentObject(updateManager)
   }
 }
