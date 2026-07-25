@@ -36,7 +36,7 @@ window in memory, and never sends conversation data anywhere.
 - Manual refresh, session-folder shortcut, and launch at login
 - Automatic GitHub release checks and checksum-verified one-click updates
 - A JSON snapshot CLI for scripts and integrations
-- An opt-in Ambient Ops agent that pushes aggregate metrics only
+- Opt-in Ambient Ops integration with local-network discovery and aggregate-only pushes
 
 The compact menu bar readout follows the window selected in the panel and
 remembers that selection across launches. Codex records usage when a model
@@ -119,8 +119,8 @@ remain excluded until a verifiable UUIDv7 child turn begins.
 
 - Reads only structural records needed for usage accounting
 - Does not persist or display prompts, responses, or tool-call bodies
-- Uses the network for GitHub updates and, only when explicitly configured, to
-  push aggregate metrics to the selected Ambient Ops server
+- Uses the network for GitHub updates and, when Ambient Ops is enabled, for
+  local mDNS discovery and aggregate-only pushes to the selected server
 - Contains no analytics SDK, account login, or conversation-data upload
 - Keeps rolling usage state in memory only
 
@@ -147,22 +147,55 @@ CODEX_HOME=/path/to/codex-home swift run codex-tps-snapshot --json
 
 ### Ambient Ops agent
 
-The optional agent sends only aggregate snapshot fields. It never sends session
-identifiers, paths, prompts, responses, or tool content. Configuration is
-explicit and disabled unless both the URL and token are set:
+The menu bar app can discover `_ambient-ops._tcp.local` automatically. Its
+collapsed Ambient Ops settings let you disable integration, switch to a manual
+HTTP(S) URL, rediscover the server, and choose the pet reported for this Mac.
+The push token stays in the macOS Keychain under
+`cn.gaofeng.ambient-ops.agent-push`; it is not stored in app preferences.
+
+The optional headless agent also discovers Ambient Ops automatically when
+`CODEX_TPS_AMBIENT_URL` is absent. Set
+`CODEX_TPS_AMBIENT_INSTANCE_ID` to prefer one advertised instance. If that
+instance rejects or cannot accept a push, the agent tries another compatible
+instance found in the same discovery cycle. An explicit URL always overrides
+discovery:
 
 ```bash
-CODEX_TPS_AMBIENT_URL=http://ambient-ops.local:8787 \
 CODEX_TPS_AMBIENT_TOKEN='<agent-token>' \
 CODEX_TPS_MACHINE_ID=primary-mac \
 CODEX_TPS_MACHINE_NAME='Primary Mac' \
 swift run codex-tps-agent
 ```
 
+```bash
+CODEX_TPS_AMBIENT_URL=http://ambient-ops.local:8787 \
+CODEX_TPS_AMBIENT_TOKEN='<agent-token>' \
+swift run codex-tps-agent --once
+```
+
+Instead of putting the token in the environment, set
+`CODEX_TPS_AMBIENT_TOKEN_KEYCHAIN_SERVICE` to a generic-password Keychain
+service and optionally set `CODEX_TPS_KEYCHAIN_ACCOUNT`. The URL override never
+changes token lookup behavior.
+
+The agent sends the stable machine ID in the request path and only these payload
+fields: machine name, platform, collection timestamp/status, aggregate `1m` and
+`5m` token counters, active-session count, and the optional pet definition and
+activity state. Cached input is a subset of input; reasoning output is a subset
+of output. Pet fields are `id`, `displayName`, `spriteVersionNumber`,
+`assetHash`, `state`, and `stateSince`. Session identifiers, local paths,
+prompts, responses, and tool content are never transmitted.
+
 Use `--once` for deployment checks. The default interval is 10 seconds and can
 be changed with `CODEX_TPS_PUSH_INTERVAL` (2-300 seconds). Collection failures
 retain the last successful aggregate values while reporting an error status;
 network failures retry without terminating the collector.
+
+The signed/notarized DMG release contains the menu bar app. The headless agent
+remains a source/SwiftPM deployment component and is not installed or started
+by the app updater. Publishing a version still requires the repository's
+signed, notarized, checksum-verified release workflow; changing the source
+version alone does not create a release.
 
 ### Development
 
@@ -242,17 +275,47 @@ cd codex-tps
 ### 隐私与统计边界
 
 - 只解析 token 统计及去重所需的结构记录，不读取或展示对话正文
-- 网络用于 GitHub 更新，以及在用户显式配置后向指定 Ambient Ops 服务端推送聚合指标
+- 网络用于 GitHub 更新；启用 Ambient Ops 后，还会通过局域网 mDNS 自动发现并向选定服务端推送聚合指标
 - 没有分析 SDK、登录流程，也不会上传任何会话内容
 - 缓存 token 是输入子集，推理 token 是输出子集，不会重复计入总量
 - 本机日志统计用于运行观察，不等同于服务端账单，也不能证明具体由哪个 API Key 扣费
+
+### Ambient Ops
+
+菜单栏 App 可以自动发现 `_ambient-ops._tcp.local`。折叠设置中可以关闭集成、
+改用手动 HTTP(S) 地址、重新发现服务端，以及选择本机上报的宠物。推送令牌保存
+在 macOS Keychain 的 `cn.gaofeng.ambient-ops.agent-push` 服务中，不会写入
+App 偏好设置。
+
+headless agent 在没有设置 `CODEX_TPS_AMBIENT_URL` 时同样会自动发现。可用
+`CODEX_TPS_AMBIENT_INSTANCE_ID` 指定首选实例；首选端点推送失败后，会尝试同一
+轮发现中的其他兼容实例。显式 URL 始终覆盖自动发现：
+
+```bash
+CODEX_TPS_AMBIENT_TOKEN='<agent-token>' \
+CODEX_TPS_MACHINE_ID=primary-mac \
+CODEX_TPS_MACHINE_NAME='Primary Mac' \
+swift run codex-tps-agent
+```
+
+也可以设置 `CODEX_TPS_AMBIENT_TOKEN_KEYCHAIN_SERVICE`，从 generic-password
+Keychain 项读取令牌；`CODEX_TPS_KEYCHAIN_ACCOUNT` 可指定账户。显式 URL
+不会改变令牌读取方式。
+
+agent 只在请求路径中使用稳定机器 ID，并发送机器名、平台、采集时间/状态、
+`1 分钟 / 5 分钟` 聚合 token 计数、活跃会话数和可选宠物状态。宠物字段只有
+`id`、`displayName`、`spriteVersionNumber`、`assetHash`、`state` 和
+`stateSince`。会话标识、本机路径、prompt、response 和工具内容都不会发送。
+
+签名/公证的 DMG 只包含菜单栏 App；headless agent 仍通过源码和 SwiftPM
+部署，App 更新器不会安装或启动它。修改源码版本不会自动发布，正式 release
+仍需完成仓库既有的签名、公证和 checksum 验证流程。
 
 ### 开发
 
 ```bash
 swift test
 swift run codex-tps-snapshot --json
-CODEX_TPS_AMBIENT_URL=http://ambient-ops.local:8787 \
 CODEX_TPS_AMBIENT_TOKEN='<agent-token>' \
 swift run codex-tps-agent --once
 ./scripts/build-app.sh
