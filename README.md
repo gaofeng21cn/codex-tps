@@ -55,6 +55,12 @@ Codex TPS does not need an API key of its own.
 curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | bash
 ```
 
+With Homebrew:
+
+```bash
+brew install --cask gaofeng21cn/codex-tps/codex-tps
+```
+
 The installer downloads the latest universal DMG, verifies its published
 SHA-256 checksum, stages and verifies the app before replacing an existing
 installation, then installs it in `/Applications` and launches it. A failed
@@ -69,9 +75,9 @@ Prefer a graphical install? Download
 [`Codex-TPS.dmg`](https://github.com/gaofeng21cn/codex-tps/releases/latest/download/Codex-TPS.dmg)
 from the latest release, open it, and drag the app to Applications.
 
-Release builds are ad-hoc signed but not notarized by Apple. When installing the
-DMG through Finder, macOS may require the standard right-click **Open** flow or
-approval in **System Settings > Privacy & Security**.
+Release builds are signed with the project's Apple Developer ID and notarized
+by Apple. The published DMG carries a stapled notarization ticket and can be
+opened normally through Finder without bypassing Gatekeeper.
 
 ### Build from source
 
@@ -180,6 +186,12 @@ Codex 在一次模型请求完成后才写入 token 用量，它反映的是完�
 curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | bash
 ```
 
+使用 Homebrew：
+
+```bash
+brew install --cask gaofeng21cn/codex-tps/codex-tps
+```
+
 安装器会下载 latest release 中同时支持 Apple Silicon 和 Intel Mac 的 DMG，
 校验官方发布的 SHA-256，在目标目录完成暂存和签名校验后原子替换旧版本；失败
 会自动回滚。默认安装到 `/Applications` 并启动。也可以直接下载
@@ -190,8 +202,8 @@ curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/
 新版本后由用户点击“立即更新”，不会无提示退出或强制更新。也可随时点击面板
 顶部的检查更新按钮。
 
-Release 使用 ad-hoc 签名，尚未进行 Apple notarization。通过 Finder 安装时，
-macOS 可能要求右键选择“打开”，或在“系统设置 > 隐私与安全性”中确认。
+Release 使用项目的 Apple Developer ID 签名并经过 Apple notarization；发布的
+DMG 带有 stapled 公证票据，可通过 Finder 正常打开，无需绕过 Gatekeeper。
 
 ### 从源码安装
 

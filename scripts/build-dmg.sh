@@ -7,6 +7,7 @@ APP_NAME="Codex TPS.app"
 DMG_NAME="${CODEX_TPS_DMG_NAME:-Codex-TPS.dmg}"
 DMG_PATH="$DIST_DIR/$DMG_NAME"
 CHECKSUM_PATH="$DMG_PATH.sha256"
+SIGNING_IDENTITY="${CODEX_TPS_SIGNING_IDENTITY:--}"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-tps-dmg.XXXXXX")"
 
 cleanup() {
@@ -28,6 +29,11 @@ hdiutil create \
   -ov \
   "$DMG_PATH"
 hdiutil verify "$DMG_PATH"
+
+if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+  codesign --force --sign "$SIGNING_IDENTITY" --timestamp "$DMG_PATH"
+  codesign --verify --verbose=2 "$DMG_PATH"
+fi
 
 (
   cd "$DIST_DIR"

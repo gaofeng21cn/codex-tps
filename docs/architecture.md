@@ -31,7 +31,7 @@ github.com/.../releases/latest (HEAD redirect)
         -> validate release tag and required asset URLs
         -> user confirms Update now
         -> download DMG and published SHA-256
-        -> verify checksum, expected version, and app signature
+        -> verify checksum, expected version, Developer ID team, and Gatekeeper
         -> stage, back up, atomically replace, and relaunch
 ```
 
@@ -39,6 +39,22 @@ The updater checks once after launch and every six hours while the app remains
 running. It is independent of the session scanner: requests contain no Codex
 log data, and only GitHub release metadata and assets are accessed. Automatic
 checking never silently installs or terminates the app.
+
+## Release trust flow
+
+```text
+universal app
+        -> Developer ID + Hardened Runtime + trusted timestamp
+        -> signed DMG
+        -> Apple notarization
+        -> stapled ticket
+        -> Gatekeeper, signature, architecture, and checksum verification
+        -> GitHub Release assets pinned by SHA-256
+```
+
+The release workflow fails closed when protected Apple credentials are missing.
+Local development builds may remain ad-hoc signed, but public release assets
+must carry Team ID `SVVC4TA784` and pass the final notarized-byte verifier.
 
 ## Accounting invariants
 

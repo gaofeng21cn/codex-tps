@@ -2,6 +2,8 @@
 set -euo pipefail
 
 REPOSITORY="gaofeng21cn/codex-tps"
+EXPECTED_TEAM_ID="SVVC4TA784"
+EXPECTED_BUNDLE_ID="io.github.gaofeng21cn.codex-tps"
 INSTALL_DIR="${CODEX_TPS_INSTALL_DIR:-/Applications}"
 DMG_URL="${CODEX_TPS_DMG_URL:-https://github.com/$REPOSITORY/releases/latest/download/Codex-TPS.dmg}"
 CHECKSUM_URL="${CODEX_TPS_CHECKSUM_URL:-https://github.com/$REPOSITORY/releases/latest/download/Codex-TPS.dmg.sha256}"
@@ -46,6 +48,28 @@ download() {
   curl --fail --location --silent --show-error --retry 3 "$1" --output "$2"
 }
 
+verify_app() {
+  local app_path="$1"
+  local signature_details actual_team_id actual_bundle_id
+
+  codesign --verify --deep --strict "$app_path"
+  signature_details="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
+  actual_team_id="$(sed -n 's/^TeamIdentifier=//p' <<<"$signature_details")"
+  actual_bundle_id="$(sed -n 's/^Identifier=//p' <<<"$signature_details")"
+  if [[ "$actual_team_id" != "$EXPECTED_TEAM_ID" ]]; then
+    echo "Codex TPS Team ID verification failed." >&2
+    return 1
+  fi
+  if [[ "$actual_bundle_id" != "$EXPECTED_BUNDLE_ID" ]]; then
+    echo "Codex TPS bundle ID verification failed." >&2
+    return 1
+  fi
+  grep -q '^Authority=Developer ID Application:' <<<"$signature_details"
+  grep -q 'flags=.*runtime' <<<"$signature_details"
+  grep -q '^Timestamp=' <<<"$signature_details"
+  spctl --assess --type execute --verbose=2 "$app_path"
+}
+
 echo "Downloading the latest Codex TPS release..."
 download "$DMG_URL" "$DMG_PATH"
 download "$CHECKSUM_URL" "$CHECKSUM_PATH"
@@ -66,7 +90,7 @@ if [[ -z "$MOUNT_POINT" ]] || [[ ! -d "$SOURCE_APP" ]]; then
   exit 1
 fi
 
-codesign --verify --deep --strict "$SOURCE_APP"
+verify_app "$SOURCE_APP"
 VERSION="$(plutil -extract CFBundleShortVersionString raw "$SOURCE_APP/Contents/Info.plist")"
 if [[ -n "${CODEX_TPS_EXPECTED_VERSION:-}" && "$VERSION" != "$CODEX_TPS_EXPECTED_VERSION" ]]; then
   echo "Expected Codex TPS $CODEX_TPS_EXPECTED_VERSION, but the DMG contains $VERSION." >&2
@@ -82,7 +106,7 @@ fi
 
 rm -rf "$STAGED_APP" "$BACKUP_APP"
 ditto "$SOURCE_APP" "$STAGED_APP"
-codesign --verify --deep --strict "$STAGED_APP"
+verify_app "$STAGED_APP"
 
 pkill -x CodexTPS 2>/dev/null || true
 for ((attempt = 0; attempt < 50; attempt++)); do
@@ -104,7 +128,7 @@ if [[ "$HAD_EXISTING_APP" -eq 1 ]]; then
   mv "$DEST_APP" "$BACKUP_APP"
 fi
 mv "$STAGED_APP" "$DEST_APP"
-codesign --verify --deep --strict "$DEST_APP"
+verify_app "$DEST_APP"
 
 if [[ "${CODEX_TPS_NO_LAUNCH:-0}" != "1" ]]; then
   open "$DEST_APP"
@@ -117,4 +141,4 @@ if [[ -n "${CODEX_TPS_UPDATE_LOG:-}" ]]; then
 fi
 
 echo "Installed Codex TPS $VERSION at $DEST_APP"
-echo "This community build is ad-hoc signed and is not notarized by Apple."
+echo "The app is Developer ID signed and notarized by Apple."
