@@ -36,6 +36,7 @@ window in memory, and never sends conversation data anywhere.
 - Manual refresh, session-folder shortcut, and launch at login
 - Automatic GitHub release checks and checksum-verified one-click updates
 - A JSON snapshot CLI for scripts and integrations
+- An opt-in Ambient Ops agent that pushes aggregate metrics only
 
 The compact menu bar readout follows the window selected in the panel and
 remembers that selection across launches. Codex records usage when a model
@@ -118,7 +119,8 @@ remain excluded until a verifiable UUIDv7 child turn begins.
 
 - Reads only structural records needed for usage accounting
 - Does not persist or display prompts, responses, or tool-call bodies
-- Uses the network only to check GitHub release metadata and download an update
+- Uses the network for GitHub updates and, only when explicitly configured, to
+  push aggregate metrics to the selected Ambient Ops server
 - Contains no analytics SDK, account login, or conversation-data upload
 - Keeps rolling usage state in memory only
 
@@ -142,6 +144,25 @@ Set `CODEX_HOME` to inspect a non-default Codex home:
 ```bash
 CODEX_HOME=/path/to/codex-home swift run codex-tps-snapshot --json
 ```
+
+### Ambient Ops agent
+
+The optional agent sends only aggregate snapshot fields. It never sends session
+identifiers, paths, prompts, responses, or tool content. Configuration is
+explicit and disabled unless both the URL and token are set:
+
+```bash
+CODEX_TPS_AMBIENT_URL=http://ambient-ops.local:8787 \
+CODEX_TPS_AMBIENT_TOKEN='<agent-token>' \
+CODEX_TPS_MACHINE_ID=primary-mac \
+CODEX_TPS_MACHINE_NAME='Primary Mac' \
+swift run codex-tps-agent
+```
+
+Use `--once` for deployment checks. The default interval is 10 seconds and can
+be changed with `CODEX_TPS_PUSH_INTERVAL` (2-300 seconds). Collection failures
+retain the last successful aggregate values while reporting an error status;
+network failures retry without terminating the collector.
 
 ### Development
 
@@ -221,7 +242,7 @@ cd codex-tps
 ### 隐私与统计边界
 
 - 只解析 token 统计及去重所需的结构记录，不读取或展示对话正文
-- 网络仅用于检查 GitHub Release 元数据和下载用户确认安装的更新
+- 网络用于 GitHub 更新，以及在用户显式配置后向指定 Ambient Ops 服务端推送聚合指标
 - 没有分析 SDK、登录流程，也不会上传任何会话内容
 - 缓存 token 是输入子集，推理 token 是输出子集，不会重复计入总量
 - 本机日志统计用于运行观察，不等同于服务端账单，也不能证明具体由哪个 API Key 扣费
@@ -231,6 +252,9 @@ cd codex-tps
 ```bash
 swift test
 swift run codex-tps-snapshot --json
+CODEX_TPS_AMBIENT_URL=http://ambient-ops.local:8787 \
+CODEX_TPS_AMBIENT_TOKEN='<agent-token>' \
+swift run codex-tps-agent --once
 ./scripts/build-app.sh
 ./scripts/build-dmg.sh
 ```

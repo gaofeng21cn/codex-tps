@@ -11,6 +11,7 @@ let package = Package(
     .library(name: "CodexTPSCore", targets: ["CodexTPSCore"]),
     .executable(name: "CodexTPS", targets: ["CodexTPS"]),
     .executable(name: "codex-tps-snapshot", targets: ["CodexTPSSnapshot"]),
+    .executable(name: "codex-tps-agent", targets: ["CodexTPSAgent"]),
   ],
   targets: [
     .target(name: "CodexTPSCore"),
@@ -20,6 +21,10 @@ let package = Package(
     ),
     .executableTarget(
       name: "CodexTPSSnapshot",
+      dependencies: ["CodexTPSCore"]
+    ),
+    .executableTarget(
+      name: "CodexTPSAgent",
       dependencies: ["CodexTPSCore"]
     ),
     .testTarget(
