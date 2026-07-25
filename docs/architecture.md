@@ -14,7 +14,7 @@ the local process.
         -> stateful token_count parser
         -> replay/duplicate filter
         -> rolling event window
-        -> MenuBarExtra and snapshot CLI
+        -> MenuBarExtra, snapshot CLI, and optional Ambient Ops agent
 ```
 
 The scanner discovers files in today's and yesterday's session directories,
@@ -39,6 +39,23 @@ The updater checks once after launch and every six hours while the app remains
 running. It is independent of the session scanner: requests contain no Codex
 log data, and only GitHub release metadata and assets are accessed. Automatic
 checking never silently installs or terminates the app.
+
+## Optional Ambient Ops flow
+
+```text
+rolling aggregate snapshot
+        -> explicit field allowlist
+        -> bearer-authenticated POST
+        -> user-configured Ambient Ops server
+```
+
+The agent is opt-in and requires an explicit server URL and token. Its payload
+contains only aggregate token totals/rates, request counts, active-session
+count, machine labels, collection status, and timestamps. Session identifiers,
+paths, prompts, responses, and tool content never cross the process boundary.
+Collection failures retain the last successful aggregate values and mark the
+snapshot as an error; transport failures retry without affecting local
+collection.
 
 ## Release trust flow
 
@@ -80,5 +97,6 @@ must carry Team ID `SVVC4TA784` and pass the final notarized-byte verifier.
   does not attribute usage to an API key or reconcile provider-side charges.
 - Codex JSONL is an implementation surface. Fixture tests cover the shapes used
   here so schema drift fails visibly.
-- Network access is restricted to GitHub release checks and update downloads.
-  There is no analytics, login, or conversation-content upload path.
+- Network access is restricted to GitHub release checks/update downloads and
+  the explicitly configured Ambient Ops push endpoint. There is no analytics,
+  login, or conversation-content upload path.
