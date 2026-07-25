@@ -42,6 +42,88 @@ public struct AmbientOpsWindowSnapshot: Codable, Equatable, Sendable {
   }
 }
 
+public enum AmbientOpsPetState: String, Codable, Equatable, Sendable {
+  case idle
+  case running
+  case waiting
+  case review
+  case failed
+
+  static func derived(from usage: UsageSnapshot) -> AmbientOpsPetState {
+    guard usage.status == .ready else { return .failed }
+    return usage.activeSessions > 0 && usage.oneMinute.requestCount > 0 ? .running : .idle
+  }
+}
+
+public struct AmbientOpsPetDefinition: Equatable, Sendable {
+  public let id: String
+  public let displayName: String
+  public let spriteVersionNumber: Int
+  public let assetHash: String
+
+  public init(
+    id: String,
+    displayName: String,
+    spriteVersionNumber: Int,
+    assetHash: String
+  ) throws {
+    let normalizedID = id.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let normalizedHash = assetHash.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard
+      normalizedID.range(
+        of: #"^[a-z0-9][a-z0-9._-]{0,79}$"#,
+        options: .regularExpression
+      ) != nil
+    else {
+      throw AmbientOpsPushError.invalidPetID
+    }
+    guard
+      normalizedHash.range(of: #"^[a-f0-9]{64}$"#, options: .regularExpression) != nil
+    else {
+      throw AmbientOpsPushError.invalidPetAssetHash
+    }
+    self.id = normalizedID
+    self.displayName = String(displayName.prefix(80))
+    self.spriteVersionNumber = max(1, spriteVersionNumber)
+    self.assetHash = normalizedHash
+  }
+}
+
+public struct AmbientOpsPetSnapshot: Codable, Equatable, Sendable {
+  public let id: String
+  public let displayName: String
+  public let spriteVersionNumber: Int
+  public let assetHash: String
+  public let state: AmbientOpsPetState
+  public let stateSince: Date
+}
+
+public struct AmbientOpsPetTracker: Sendable {
+  private var state: AmbientOpsPetState?
+  private var stateSince: Date?
+
+  public init() {}
+
+  public mutating func snapshot(
+    definition: AmbientOpsPetDefinition,
+    usage: UsageSnapshot
+  ) -> AmbientOpsPetSnapshot {
+    let nextState = AmbientOpsPetState.derived(from: usage)
+    if nextState != state {
+      state = nextState
+      stateSince = usage.generatedAt
+    }
+    return AmbientOpsPetSnapshot(
+      id: definition.id,
+      displayName: definition.displayName,
+      spriteVersionNumber: definition.spriteVersionNumber,
+      assetHash: definition.assetHash,
+      state: nextState,
+      stateSince: stateSince ?? usage.generatedAt
+    )
+  }
+}
+
 public struct AmbientOpsAgentSnapshot: Codable, Equatable, Sendable {
   public let schemaVersion: Int
   public let machineName: String
@@ -52,17 +134,20 @@ public struct AmbientOpsAgentSnapshot: Codable, Equatable, Sendable {
   public let oneMinute: AmbientOpsWindowSnapshot
   public let fiveMinutes: AmbientOpsWindowSnapshot
   public let activeSessions: Int
+  public let pet: AmbientOpsPetSnapshot?
 
   public init(
     usage: UsageSnapshot,
     identity: AmbientOpsMachineIdentity,
-    fallback: AmbientOpsAgentSnapshot? = nil
+    fallback: AmbientOpsAgentSnapshot? = nil,
+    pet: AmbientOpsPetSnapshot? = nil
   ) {
-    schemaVersion = 1
+    schemaVersion = 2
     machineName = identity.machineName
     platform = identity.platform
     generatedAt = usage.generatedAt
     activeSessions = usage.status == .ready ? usage.activeSessions : fallback?.activeSessions ?? 0
+    self.pet = pet
 
     if usage.status == .ready {
       status = "live"
@@ -171,6 +256,8 @@ public struct AmbientOpsPushClient: Sendable {
 
 public enum AmbientOpsPushError: LocalizedError, Equatable {
   case invalidMachineID
+  case invalidPetID
+  case invalidPetAssetHash
   case invalidEndpoint
   case missingToken
   case invalidResponse
@@ -180,6 +267,10 @@ public enum AmbientOpsPushError: LocalizedError, Equatable {
     switch self {
     case .invalidMachineID:
       return "Machine ID must contain 1-80 letters, numbers, dots, underscores, or hyphens"
+    case .invalidPetID:
+      return "Pet ID must contain 1-80 lowercase letters, numbers, dots, underscores, or hyphens"
+    case .invalidPetAssetHash:
+      return "Pet asset hash must be a SHA-256 value"
     case .invalidEndpoint:
       return "Ambient Ops URL must be an absolute HTTP or HTTPS URL"
     case .missingToken:
