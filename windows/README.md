@@ -1,0 +1,95 @@
+# Codex TPS for Windows
+
+Codex TPS for Windows is a native .NET 8 WinForms tray application. It reads
+the token accounting events already written under the current Windows user's
+Codex home and can send aggregate metrics to Ambient Ops on the local network.
+
+## Runtime behavior
+
+- Default input: `%USERPROFILE%\.codex\sessions`
+- Override: set `CODEX_HOME`, or select a Codex home in Settings
+- Windows tray icon with a compact TPS dashboard and manual refresh
+- Five-second local refresh; Ambient Ops pushes are limited to once per ten seconds
+- `_ambient-ops._tcp.local.` DNS-SD discovery with preferred-instance and fallback behavior
+- Manual Ambient Ops HTTP(S) URL override
+- Optional Ledger Owl state using the same Ambient Ops v2 payload as macOS
+- Optional per-user startup through `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+- Push token encrypted for the current Windows user with DPAPI
+
+The dashboard reports one-minute total, input, cached input, output, reasoning
+and session activity as TPS values. Cached input remains a subset of input, and
+reasoning remains a subset of output; neither is added twice.
+
+## Privacy contract
+
+The scanner filters JSONL bytes for `session_meta`, `turn_context`,
+`task_started` and `token_count` markers before JSON decoding. Conversation-only
+records are not decoded or retained. Ambient Ops receives only:
+
+- stable machine ID in the request path;
+- machine name, platform, generated time and collection status;
+- aggregate one-minute and five-minute token counters;
+- active-session count;
+- optional pet identity and activity state.
+
+Session IDs, file paths, prompts, responses and tool content are never included
+in the network payload. The app contains no analytics or account login.
+
+## Build
+
+Install the .NET 8 SDK and PowerShell 7, then run from the repository root:
+
+```powershell
+pwsh ./windows/scripts/build.ps1 -Runtime win-x64
+```
+
+The script runs Core tests, publishes a self-contained single-file app, and
+creates:
+
+```text
+windows/dist/Codex-TPS-Windows-win-x64.zip
+windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
+```
+
+The GitHub `CI` workflow builds `win-x64` on a real Windows runner and uploads
+the same ZIP/checksum pair. CI artifacts are unsigned development builds; they
+are not a Windows release or SmartScreen reputation proof.
+
+The first productized target is `win-x64`. Windows on Arm can run it through
+the operating system's x64 emulation; a native Arm64 artifact is not yet a
+validated target.
+
+## Install
+
+Exit an existing tray process, then install the built archive for the current
+user:
+
+```powershell
+pwsh ./windows/scripts/install.ps1 `
+  -ArchivePath ./windows/dist/Codex-TPS-Windows-win-x64.zip
+```
+
+The installer stages and verifies the archive before replacing
+`%LOCALAPPDATA%\Programs\Codex TPS`, restoring the previous directory if the
+replacement fails. The sibling `.sha256` file is mandatory and checked before
+extraction. The installer does not enable startup automatically; use the
+checkbox in Settings.
+
+## Native Windows and WSL sessions
+
+Native Windows Codex sessions use `%USERPROFILE%\.codex`. If Codex runs inside
+WSL, select an accessible UNC Codex home such as
+`\\wsl.localhost\Ubuntu\home\<user>\.codex`. Codex TPS does not launch Codex,
+change its execution environment, or silently switch between native Windows
+and WSL stores.
+
+## Source layout
+
+- `src/CodexTPS.Core`: parser, replay deduplication, rolling metrics and payload contract
+- `src/CodexTPS.Windows`: WinForms tray, settings, DPAPI, startup and DNS-SD
+- `tests/CodexTPS.Core.Tests`: deterministic accounting/privacy/discovery tests
+
+Before calling a Windows build production-ready, verify on a clean Windows 11
+machine: first launch, tray interaction, DPAPI persistence, startup after sign-in,
+local-network firewall consent and discovery, sleep/network recovery, and an
+actual Ambient Ops accepted push.
