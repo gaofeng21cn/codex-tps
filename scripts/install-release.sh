@@ -5,6 +5,9 @@ REPOSITORY="gaofeng21cn/codex-tps"
 EXPECTED_TEAM_ID="SVVC4TA784"
 EXPECTED_BUNDLE_ID="io.github.gaofeng21cn.codex-tps"
 INSTALL_DIR="${CODEX_TPS_INSTALL_DIR:-/Applications}"
+RUNNING_PID="${CODEX_TPS_RUNNING_PID:-}"
+RUNNING_APP="${CODEX_TPS_RUNNING_APP:-}"
+OPEN_COMMAND="${CODEX_TPS_OPEN_COMMAND:-/usr/bin/open}"
 DMG_URL="${CODEX_TPS_DMG_URL:-https://github.com/$REPOSITORY/releases/latest/download/Codex-TPS.dmg}"
 CHECKSUM_URL="${CODEX_TPS_CHECKSUM_URL:-https://github.com/$REPOSITORY/releases/latest/download/Codex-TPS.dmg.sha256}"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-tps-install.XXXXXX")"
@@ -16,21 +19,14 @@ STAGED_APP="$INSTALL_DIR/.Codex TPS.app.update.$$"
 BACKUP_APP="$INSTALL_DIR/.Codex TPS.app.backup.$$"
 REPLACEMENT_STARTED=0
 HAD_EXISTING_APP=0
+NEW_PID=""
+ROLLBACK_PID=""
 
 cleanup() {
   local exit_status=$?
 
   if [[ "$exit_status" -ne 0 && "$REPLACEMENT_STARTED" -eq 1 ]]; then
-    if [[ -d "$BACKUP_APP" ]]; then
-      rm -rf "$DEST_APP"
-      mv "$BACKUP_APP" "$DEST_APP" || true
-    elif [[ "$HAD_EXISTING_APP" -eq 0 ]]; then
-      rm -rf "$DEST_APP"
-    fi
-
-    if [[ "$HAD_EXISTING_APP" -eq 1 && -d "$DEST_APP" && "${CODEX_TPS_NO_LAUNCH:-0}" != "1" ]]; then
-      open "$DEST_APP" >/dev/null 2>&1 || true
-    fi
+    rollback_replacement || true
   fi
 
   if [[ -n "$MOUNT_POINT" ]]; then
@@ -42,7 +38,8 @@ cleanup() {
   fi
   rm -rf "$TEMP_DIR"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 download() {
   curl --fail --location --silent --show-error --retry 3 "$1" --output "$2"
@@ -69,6 +66,193 @@ verify_app() {
   grep -q '^Timestamp=' <<<"$signature_details"
   spctl --assess --type execute --verbose=2 "$app_path"
 }
+
+process_matches_app() {
+  local pid="$1"
+  local app_path="$2"
+  local command expected_executable
+
+  command="$(ps -ww -p "$pid" -o command= 2>/dev/null)" || return 1
+  expected_executable="$app_path/Contents/MacOS/CodexTPS"
+  [[ "$command" == "$expected_executable" || "$command" == "$expected_executable "* ]]
+}
+
+wait_for_exit() {
+  local pid="$1"
+
+  for ((attempt = 0; attempt < 50; attempt++)); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    sleep 0.1
+  done
+  return 1
+}
+
+stop_process() {
+  local pid="$1"
+  local app_path="$2"
+
+  if ! kill -0 "$pid" 2>/dev/null; then
+    return 0
+  fi
+  if ! process_matches_app "$pid" "$app_path"; then
+    echo "Codex TPS updater refused to stop an unexpected process." >&2
+    return 1
+  fi
+
+  kill -TERM "$pid" 2>/dev/null || true
+  if wait_for_exit "$pid"; then
+    return 0
+  fi
+
+  if ! process_matches_app "$pid" "$app_path"; then
+    echo "Codex TPS process identity changed while stopping it." >&2
+    return 1
+  fi
+  kill -KILL "$pid" 2>/dev/null || true
+  if wait_for_exit "$pid"; then
+    return 0
+  fi
+
+  echo "Codex TPS process $pid could not be stopped for the update." >&2
+  return 1
+}
+
+stop_processes_for_app() {
+  local app_path="$1"
+  local pid
+  local result=0
+
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    if process_matches_app "$pid" "$app_path"; then
+      stop_process "$pid" "$app_path" || result=1
+    fi
+  done < <(pgrep -x CodexTPS 2>/dev/null || true)
+
+  return "$result"
+}
+
+validate_running_process_contract() {
+  if [[ -z "$RUNNING_PID" && -z "$RUNNING_APP" ]]; then
+    return 0
+  fi
+  if [[ -z "$RUNNING_PID" || -z "$RUNNING_APP" ]]; then
+    echo "Codex TPS updater requires both the running process ID and app path." >&2
+    return 1
+  fi
+  if [[ ! "$RUNNING_PID" =~ ^[0-9]+$ ]]; then
+    echo "Codex TPS updater received an invalid process ID." >&2
+    return 1
+  fi
+  if [[ "$RUNNING_APP" != "$DEST_APP" ]]; then
+    echo "Codex TPS updater refused to replace a different app path." >&2
+    return 1
+  fi
+  if ! kill -0 "$RUNNING_PID" 2>/dev/null; then
+    echo "Codex TPS running process is no longer available." >&2
+    return 1
+  fi
+  if ! process_matches_app "$RUNNING_PID" "$RUNNING_APP"; then
+    echo "Codex TPS updater refused an unexpected running process." >&2
+    return 1
+  fi
+}
+
+stop_running_app() {
+  if [[ -n "$RUNNING_PID" ]]; then
+    validate_running_process_contract
+    stop_processes_for_app "$RUNNING_APP"
+    return
+  fi
+
+  stop_processes_for_app "$DEST_APP"
+}
+
+running_process_for_app() {
+  local app_path="$1"
+  local excluded_pid="${2:-}"
+  local pid
+
+  while IFS= read -r pid; do
+    [[ -n "$pid" ]] || continue
+    [[ -z "$excluded_pid" || "$pid" != "$excluded_pid" ]] || continue
+    if process_matches_app "$pid" "$app_path"; then
+      printf '%s\n' "$pid"
+      return 0
+    fi
+  done < <(pgrep -x CodexTPS 2>/dev/null || true)
+  return 1
+}
+
+wait_for_launch() {
+  local app_path="$1"
+  local excluded_pid="${2:-}"
+  local pid
+
+  for ((attempt = 0; attempt < 100; attempt++)); do
+    pid="$(running_process_for_app "$app_path" "$excluded_pid")" || {
+      sleep 0.1
+      continue
+    }
+    sleep 2
+    if kill -0 "$pid" 2>/dev/null && process_matches_app "$pid" "$app_path"; then
+      printf '%s\n' "$pid"
+      return 0
+    fi
+  done
+  return 1
+}
+
+launch_app_and_wait() {
+  local app_path="$1"
+  local excluded_pid="${2:-}"
+
+  "$OPEN_COMMAND" -n "$app_path" >/dev/null 2>&1 || return 1
+  wait_for_launch "$app_path" "$excluded_pid"
+}
+
+rollback_replacement() {
+  if ! stop_processes_for_app "$DEST_APP"; then
+    echo "Codex TPS could not safely stop the replacement; the backup remains at $BACKUP_APP." >&2
+    return 1
+  fi
+
+  if [[ -d "$BACKUP_APP" ]]; then
+    if ! rm -rf "$DEST_APP"; then
+      echo "Codex TPS could not remove the failed replacement; the backup remains at $BACKUP_APP." >&2
+      return 1
+    fi
+    if ! mv "$BACKUP_APP" "$DEST_APP"; then
+      echo "Codex TPS could not restore the backup at $BACKUP_APP." >&2
+      return 1
+    fi
+  elif [[ "$HAD_EXISTING_APP" -eq 0 ]]; then
+    if ! rm -rf "$DEST_APP"; then
+      echo "Codex TPS could not remove the failed new installation." >&2
+      return 1
+    fi
+  else
+    echo "Codex TPS backup is missing; automatic rollback is unavailable." >&2
+    return 1
+  fi
+  REPLACEMENT_STARTED=0
+
+  if [[ "$HAD_EXISTING_APP" -eq 1 && "${CODEX_TPS_NO_LAUNCH:-0}" != "1" ]]; then
+    if ! ROLLBACK_PID="$(launch_app_and_wait "$DEST_APP" "$RUNNING_PID")"; then
+      echo "Codex TPS was restored but could not be relaunched." >&2
+      return 1
+    fi
+    echo "Restored the previous Codex TPS as process $ROLLBACK_PID." >&2
+  fi
+}
+
+validate_running_process_contract
+if [[ "${CODEX_TPS_NO_LAUNCH:-0}" != "1" && ! -x "$OPEN_COMMAND" ]]; then
+  echo "Codex TPS launch command is unavailable." >&2
+  exit 1
+fi
 
 echo "Downloading the latest Codex TPS release..."
 download "$DMG_URL" "$DMG_PATH"
@@ -108,17 +292,7 @@ rm -rf "$STAGED_APP" "$BACKUP_APP"
 ditto "$SOURCE_APP" "$STAGED_APP"
 verify_app "$STAGED_APP"
 
-pkill -x CodexTPS 2>/dev/null || true
-for ((attempt = 0; attempt < 50; attempt++)); do
-  if ! pgrep -x CodexTPS >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
-if pgrep -x CodexTPS >/dev/null 2>&1; then
-  echo "Codex TPS could not be stopped for the update." >&2
-  exit 1
-fi
+stop_running_app
 
 if [[ -d "$DEST_APP" ]]; then
   HAD_EXISTING_APP=1
@@ -131,7 +305,10 @@ mv "$STAGED_APP" "$DEST_APP"
 verify_app "$DEST_APP"
 
 if [[ "${CODEX_TPS_NO_LAUNCH:-0}" != "1" ]]; then
-  open "$DEST_APP"
+  if ! NEW_PID="$(launch_app_and_wait "$DEST_APP" "$RUNNING_PID")"; then
+    echo "Codex TPS was installed but did not relaunch." >&2
+    exit 1
+  fi
 fi
 
 REPLACEMENT_STARTED=0
@@ -141,4 +318,7 @@ if [[ -n "${CODEX_TPS_UPDATE_LOG:-}" ]]; then
 fi
 
 echo "Installed Codex TPS $VERSION at $DEST_APP"
+if [[ -n "$NEW_PID" ]]; then
+  echo "Launched Codex TPS as process $NEW_PID."
+fi
 echo "The app is Developer ID signed and notarized by Apple."
