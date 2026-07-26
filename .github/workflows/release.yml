@@ -207,7 +207,7 @@ jobs:
           cat >release-notes.md <<'EOF'
           ## Windows
 
-          Download `Codex-TPS-Windows-win-x64-Setup.exe` for the standard current-user installer. It installs under `%LOCALAPPDATA%\Programs\Codex TPS`, supports upgrades and uninstall, and includes Ambient Ops automatic LAN discovery. The Windows package is currently not Authenticode-signed and may show an unknown-publisher warning.
+          Download `Codex-TPS-Windows-win-x64-Setup.exe` for the standard current-user installer. It installs under `%LOCALAPPDATA%\Programs\Codex TPS`, supports upgrades and uninstall, renders compact live TPS directly in the tray icon, and adds one-click clipboard token setup after Ambient Ops automatic LAN discovery. Windows may initially place the icon under the `^` overflow menu. The Windows package is currently not Authenticode-signed and may show an unknown-publisher warning.
 
           ## macOS
 

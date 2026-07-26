@@ -8,17 +8,22 @@ Codex home and can send aggregate metrics to Ambient Ops on the local network.
 
 - Default input: `%USERPROFILE%\.codex\sessions`
 - Override: set `CODEX_HOME`, or select a Codex home in Settings
-- Windows tray icon with a compact TPS dashboard and manual refresh
+- Windows tray icon renders compact live TPS text such as `17K`; clicking it opens the dashboard
 - Five-second local refresh; Ambient Ops pushes are limited to once per ten seconds
 - `_ambient-ops._tcp.local.` DNS-SD discovery with preferred-instance and fallback behavior
 - Manual Ambient Ops HTTP(S) URL override
 - Optional Ledger Owl state using the same Ambient Ops v2 payload as macOS
 - Optional per-user startup through `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
 - Push token encrypted for the current Windows user with DPAPI
+- One-click token paste saves the clipboard value and immediately reconnects
 
 The dashboard reports one-minute total, input, cached input, output, reasoning
 and session activity as TPS values. Cached input remains a subset of input, and
 reasoning remains a subset of output; neither is added twice.
+
+Windows 11 may initially place a new tray icon under the `^` overflow menu.
+Windows owns that preference, so pin Codex TPS once in Taskbar settings when the
+live TPS icon should remain in the primary notification area.
 
 ## Privacy contract
 
@@ -87,7 +92,7 @@ windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
 To build the standard installer, also install Inno Setup 6 and run:
 
 ```powershell
-pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.6
+pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.7
 ```
 
 This additionally creates:

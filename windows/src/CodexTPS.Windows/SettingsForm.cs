@@ -1,4 +1,5 @@
 using CodexTPS.Core;
+using System.Runtime.InteropServices;
 
 namespace CodexTPS.WindowsApp;
 
@@ -19,11 +20,13 @@ internal sealed class SettingsForm : RoundedPopupForm
     private readonly ToggleSwitch autoDiscover = new();
     private readonly TextBox manualUrl = TextInput();
     private readonly TextBox token = TextInput(password: true);
+    private readonly Button pasteToken = IconButton("\uE77F", "从剪贴板粘贴令牌并连接");
     private readonly TextBox preferredInstance = TextInput();
     private readonly TextBox machineId = TextInput();
     private readonly TextBox machineName = TextInput();
     private readonly ToggleSwitch petEnabled = new();
     private readonly ToggleSwitch startWithWindows = new();
+    private readonly ToolTip toolTip = new();
     private readonly TableLayoutPanel content = new();
     private readonly Panel manualUrlRow = new();
     private readonly Label manualUrlLabel;
@@ -114,7 +117,20 @@ internal sealed class SettingsForm : RoundedPopupForm
         manualUrlRow.Controls.Add(manualUrl);
         manualUrlRowIndex = content.RowCount;
         manualUrlLabel = AddField("手动地址", manualUrlRow);
-        AddField("推送令牌", token);
+        var tokenPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            BackColor = Background,
+        };
+        tokenPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        tokenPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 44));
+        token.Dock = DockStyle.Fill;
+        pasteToken.Click += (_, _) => PasteTokenAndSave();
+        toolTip.SetToolTip(pasteToken, "粘贴剪贴板中的令牌并立即连接");
+        tokenPanel.Controls.Add(token, 0, 0);
+        tokenPanel.Controls.Add(pasteToken, 1, 0);
+        AddField("推送令牌", tokenPanel);
         AddField("首选实例", preferredInstance);
         AddSeparator();
 
@@ -146,6 +162,15 @@ internal sealed class SettingsForm : RoundedPopupForm
     }
 
     public AppSettings? ResultSettings { get; private set; }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            toolTip.Dispose();
+        }
+        base.Dispose(disposing);
+    }
 
     private Control BuildHeader()
     {
@@ -363,6 +388,38 @@ internal sealed class SettingsForm : RoundedPopupForm
         }
     }
 
+    private void PasteTokenAndSave()
+    {
+        try
+        {
+            var value = Clipboard.GetText(TextDataFormat.Text).Trim();
+            if (value.Length < 16)
+            {
+                throw new InvalidOperationException("剪贴板中没有有效的 Ambient Ops 推送令牌。");
+            }
+            token.Text = value;
+            SaveSettings();
+        }
+        catch (ExternalException error)
+        {
+            MessageBox.Show(
+                this,
+                error.Message,
+                "无法读取剪贴板",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+        catch (InvalidOperationException error)
+        {
+            MessageBox.Show(
+                this,
+                error.Message,
+                "未找到推送令牌",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+    }
+
     private void BrowseCodexHome()
     {
         using var dialog = new FolderBrowserDialog
@@ -394,6 +451,7 @@ internal sealed class SettingsForm : RoundedPopupForm
     {
         autoDiscover.Enabled = ambientEnabled.Checked;
         token.Enabled = ambientEnabled.Checked;
+        pasteToken.Enabled = ambientEnabled.Checked;
         preferredInstance.Enabled = ambientEnabled.Checked;
         petEnabled.Enabled = ambientEnabled.Checked;
         UpdateManualUrlVisibility();

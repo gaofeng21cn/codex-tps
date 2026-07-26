@@ -11,6 +11,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly Icon applicationIcon;
     private readonly NotifyIcon trayIcon;
     private readonly System.Windows.Forms.Timer refreshTimer;
+    private Icon? rateIcon;
     private AppSettings settings;
     private SessionScanner scanner;
     private DashboardForm dashboard;
@@ -78,6 +79,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         cancellation.Cancel();
         trayIcon.Visible = false;
         trayIcon.Dispose();
+        rateIcon?.Dispose();
         applicationIcon.Dispose();
         dashboard.CloseForExit();
         dashboard.Dispose();
@@ -113,6 +115,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 forcePush,
                 cancellation.Token);
             dashboard.UpdateSnapshot(lastSnapshot, ambientOps.Connection);
+            UpdateTrayRateIcon(lastSnapshot);
             trayIcon.Text = lastSnapshot.Status == CollectionStatus.Ready
                 ? $"Codex TPS · {Compact(lastSnapshot.OneMinute.TokensPerSecond)} t/s"
                 : "Codex TPS · sessions unavailable";
@@ -133,6 +136,22 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             refreshing = false;
         }
+    }
+
+    private void UpdateTrayRateIcon(UsageSnapshot snapshot)
+    {
+        var previous = rateIcon;
+        if (snapshot.Status == CollectionStatus.Ready)
+        {
+            rateIcon = TrayRateIcon.Create(snapshot.OneMinute.TokensPerSecond);
+            trayIcon.Icon = rateIcon;
+        }
+        else
+        {
+            rateIcon = null;
+            trayIcon.Icon = applicationIcon;
+        }
+        previous?.Dispose();
     }
 
     private void ShowSettings()
