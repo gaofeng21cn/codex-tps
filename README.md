@@ -24,8 +24,8 @@
 ## English
 
 Codex TPS turns the usage events already written by Codex into a compact menu
-bar readout. It reads local session logs incrementally, keeps a rolling one-hour
-window in memory, and never sends conversation data anywhere.
+bar or system-tray readout. It reads local session logs incrementally, keeps a
+rolling one-hour window in memory, and never sends conversation data anywhere.
 
 ### Features
 
@@ -49,6 +49,16 @@ per-streaming-chunk speedometer.
 - Codex session logs under `~/.codex/sessions`, or `$CODEX_HOME/sessions`
 
 Codex TPS does not need an API key of its own.
+
+### Windows native app
+
+The repository also contains a native .NET 8 WinForms tray implementation for
+Windows 11. It reads `%USERPROFILE%\.codex\sessions`, supports an explicit or
+WSL UNC `CODEX_HOME`, stores the Ambient Ops token with Windows DPAPI, manages
+optional per-user startup, and publishes a self-contained `win-x64` CI artifact.
+Build, install and current validation boundaries are documented in
+[`windows/README.md`](windows/README.md). Windows artifacts are currently
+unsigned development builds and are not part of the signed macOS release.
 
 ### Quick install
 
@@ -222,8 +232,8 @@ respective owner.
 
 ## 简体中文
 
-Codex TPS 是一个仅在本机运行的 macOS 菜单栏小工具。它增量读取 Codex
-已经写入 `~/.codex/sessions` 的用量事件，显示最近 `1 分钟 / 5 分钟 /
+Codex TPS 是一个仅在本机运行的菜单栏/系统托盘工具。它增量读取 Codex
+已经写入 sessions 目录的用量事件，显示最近 `1 分钟 / 5 分钟 /
 30 分钟 / 1 小时` 的 token/s，并提供输入、缓存、输出、推理、请求/分钟、
 活跃会话和缓存占比等统计。
 
@@ -231,6 +241,15 @@ Codex TPS 是一个仅在本机运行的 macOS 菜单栏小工具。它增量读
 选择。菜单栏数字会跟随面板当前选择的统计区间，并在重启后保留该选择。由于
 Codex 在一次模型请求完成后才写入 token 用量，它反映的是完成时吞吐量，不是
 逐个流式 chunk 的瞬时速度。
+
+### Windows 原生版
+
+仓库同时提供基于 .NET 8 WinForms 的 Windows 11 原生托盘版，默认读取
+`%USERPROFILE%\.codex\sessions`，也支持显式或 WSL UNC `CODEX_HOME`；
+Ambient Ops token 使用 Windows DPAPI 加密保存，并可配置当前用户登录后启动。
+构建、安装和仍需 Windows 真机验证的边界见
+[`windows/README.md`](windows/README.md)。当前 Windows 制品是未签名的开发构建，
+不属于已签名的 macOS release。
 
 ### 一键安装
 

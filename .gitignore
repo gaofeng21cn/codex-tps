@@ -3,3 +3,8 @@
 .codegraph/
 dist/
 *.xcuserstate
+windows/**/bin/
+windows/**/obj/
+windows/dist/
+windows/.vs/
+windows/**/*.user

@@ -1,0 +1,23 @@
+namespace CodexTPS.WindowsApp;
+
+internal static class Program
+{
+    [STAThread]
+    private static void Main(string[] args)
+    {
+        using var mutex = new Mutex(initiallyOwned: true, @"Local\CodexTPS.Windows", out var created);
+        if (!created)
+        {
+            MessageBox.Show(
+                "Codex TPS is already running.",
+                "Codex TPS",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
+            return;
+        }
+
+        ApplicationConfiguration.Initialize();
+        var background = args.Contains("--background", StringComparer.OrdinalIgnoreCase);
+        Application.Run(new TrayApplicationContext(showDashboard: !background));
+    }
+}

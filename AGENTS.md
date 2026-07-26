@@ -1,13 +1,13 @@
 # Codex TPS Repository Guide
 
-This repository owns a local-only macOS menu bar monitor for Codex token
-throughput. It reads Codex session JSONL files and never uploads conversation
-content.
+This repository owns local-only macOS menu bar and Windows tray monitors for
+Codex token throughput. They read Codex session JSONL files and never upload
+conversation content.
 
 ## Runtime Contract
 
-- Live input is `$CODEX_HOME/sessions` when `CODEX_HOME` is set, otherwise
-  `~/.codex/sessions`.
+- Live input is `$CODEX_HOME/sessions` when `CODEX_HOME` is set. Defaults are
+  `~/.codex/sessions` on macOS and `%USERPROFILE%\.codex\sessions` on Windows.
 - Count only `event_msg` entries whose payload type is `token_count`.
 - Treat `last_token_usage` as the request increment. Use
   `total_token_usage` only for replay and duplicate detection.
@@ -17,8 +17,9 @@ content.
   Legacy replay can mix UUIDv4 turn IDs with current UUIDv7 IDs. Preserve the
   fork state machine and cross-file deduplication tests.
 - Do not persist, log, transmit, or render prompt or response bodies.
-- Network access is limited to GitHub release metadata and assets for automatic
-  update checks and user-confirmed installation.
+- Network access is limited to GitHub release metadata/assets and opt-in
+  aggregate Ambient Ops discovery/push. Conversation records never cross the
+  network boundary.
 
 ## Development
 
@@ -29,6 +30,8 @@ content.
 - Universal DMG: `./scripts/build-dmg.sh`
 - Install: `./scripts/install.sh`
 - Install latest release: `./scripts/install-release.sh`
+- Windows test: `dotnet test windows/tests/CodexTPS.Core.Tests -c Release`
+- Windows package: `pwsh ./windows/scripts/build.ps1 -Runtime win-x64`
 
 Runtime and packaging claims require a real installed-app readback in addition
 to unit tests.
