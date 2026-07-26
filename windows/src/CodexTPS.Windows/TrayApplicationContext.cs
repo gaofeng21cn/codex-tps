@@ -7,6 +7,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly AppSettingsStore settingsStore = new();
     private readonly AmbientOpsCoordinator ambientOps = new();
     private readonly CancellationTokenSource cancellation = new();
+    private readonly Icon applicationIcon;
     private readonly NotifyIcon trayIcon;
     private readonly System.Windows.Forms.Timer refreshTimer;
     private AppSettings settings;
@@ -37,9 +38,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         menu.Items.Add("Settings", null, (_, _) => ShowSettings());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit", null, (_, _) => ExitThread());
+        applicationIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath)
+            ?? (Icon)SystemIcons.Application.Clone();
         trayIcon = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = applicationIcon,
             Text = "Codex TPS",
             Visible = true,
             ContextMenuStrip = menu,
@@ -62,6 +65,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         cancellation.Cancel();
         trayIcon.Visible = false;
         trayIcon.Dispose();
+        applicationIcon.Dispose();
         dashboard.CloseForExit();
         dashboard.Dispose();
         cancellation.Dispose();
