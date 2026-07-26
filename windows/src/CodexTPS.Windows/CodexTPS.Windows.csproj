@@ -9,7 +9,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>CodexTPS</AssemblyName>
     <RootNamespace>CodexTPS.WindowsApp</RootNamespace>
-    <Version>0.2.7</Version>
+    <Version>0.2.8</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
