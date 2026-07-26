@@ -3,7 +3,7 @@ param(
     [string]$Runtime = "win-x64",
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
-    [string]$Version = "0.2.15",
+    [string]$Version = "0.2.16",
     [switch]$SkipTests
 )
 
@@ -12,7 +12,8 @@ $windowsRoot = Split-Path -Parent $PSScriptRoot
 $repositoryRoot = Split-Path -Parent $windowsRoot
 $solution = Join-Path $windowsRoot "CodexTPS.Windows.sln"
 $appProject = Join-Path $windowsRoot "src/CodexTPS.Windows/CodexTPS.Windows.csproj"
-$testProject = Join-Path $windowsRoot "tests/CodexTPS.Core.Tests/CodexTPS.Core.Tests.csproj"
+$coreTestProject = Join-Path $windowsRoot "tests/CodexTPS.Core.Tests/CodexTPS.Core.Tests.csproj"
+$windowsTestProject = Join-Path $windowsRoot "tests/CodexTPS.Windows.Tests/CodexTPS.Windows.Tests.csproj"
 $distRoot = Join-Path $windowsRoot "dist"
 $publishRoot = Join-Path $distRoot $Runtime
 $archive = Join-Path $distRoot "Codex-TPS-Windows-$Runtime.zip"
@@ -28,8 +29,10 @@ dotnet restore $appProject -r $Runtime --locked-mode --nologo
 if ($LASTEXITCODE -ne 0) { throw "Locked Windows runtime restore failed." }
 
 if (-not $SkipTests) {
-    dotnet test $testProject -c $Configuration --no-restore --nologo
+    dotnet test $coreTestProject -c $Configuration --no-restore --nologo
     if ($LASTEXITCODE -ne 0) { throw "Windows Core tests failed." }
+    dotnet test $windowsTestProject -c $Configuration --no-restore --nologo
+    if ($LASTEXITCODE -ne 0) { throw "Windows UI tests failed." }
 }
 
 if (Test-Path $publishRoot) {

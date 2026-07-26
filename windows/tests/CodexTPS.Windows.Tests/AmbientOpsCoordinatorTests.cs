@@ -6,9 +6,9 @@ namespace CodexTPS.Windows.Tests;
 public sealed class AmbientOpsCoordinatorTests
 {
     private static readonly AmbientOpsService LegacyService = new(
+        "ao-test",
         "Gaofeng Home",
         new Uri("http://192.168.1.170:8787"),
-        "ao-test",
         "/display/pet",
         SupportsPairing: false);
 

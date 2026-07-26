@@ -213,7 +213,7 @@ jobs:
           cat >release-notes.md <<'EOF'
           ## Windows
 
-          Download `Codex-TPS-Windows-win-x64-Setup.exe` for the standard current-user installer. It installs under `%LOCALAPPDATA%\Programs\Codex TPS`, supports upgrades and uninstall, renders compact live TPS directly on the Windows taskbar in addition to the tray icon, and automatically starts one-click per-device pairing after Ambient Ops LAN discovery. The device private key is stored only as current-user DPAPI ciphertext; the shared NAS token is no longer required with Ambient Ops v0.1.4+. Windows may initially place the tray icon under the `^` overflow menu. The Windows package is currently not Authenticode-signed and may show an unknown-publisher warning.
+          Download `Codex-TPS-Windows-win-x64-Setup.exe` for the standard current-user installer. It installs under `%LOCALAPPDATA%\Programs\Codex TPS`, supports upgrades and uninstall, renders theme-aware live TPS as unframed native taskbar text, scales the readout with taskbar DPI, and safely recreates a closed dashboard when the tray or taskbar readout is opened again. It also automatically starts one-click per-device pairing after Ambient Ops LAN discovery. The device private key is stored only as current-user DPAPI ciphertext; the shared NAS token is no longer required with Ambient Ops v0.1.4+. Windows may initially place the tray icon under the `^` overflow menu. The Windows package is currently not Authenticode-signed and may show an unknown-publisher warning.
 
           ## macOS
 

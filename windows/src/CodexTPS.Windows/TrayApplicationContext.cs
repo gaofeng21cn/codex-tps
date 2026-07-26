@@ -13,14 +13,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly NotifyIcon trayIcon;
     private readonly TaskbarReadoutForm taskbarReadout;
     private readonly System.Windows.Forms.Timer refreshTimer;
+    private readonly DashboardFormSlot dashboard;
     private Icon? rateIcon;
     private AppSettings settings;
     private SessionScanner scanner;
-    private DashboardForm dashboard;
     private UsageSnapshot lastSnapshot = UsageSnapshot.Empty(
         DateTimeOffset.Now,
         CollectionStatus.SessionsDirectoryMissing);
     private bool refreshing;
+    private bool exiting;
     private string? openedPairingUri;
 
     public TrayApplicationContext(bool showDashboard)
@@ -41,10 +42,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             settings.StartWithWindows = false;
         }
         scanner = CreateScanner(settings);
-        dashboard = CreateDashboard(scanner.SessionsRoot);
+        dashboard = new DashboardFormSlot(CreateDashboard);
 
         trayMenu = new ContextMenuStrip();
-        trayMenu.Items.Add("打开", null, (_, _) => dashboard.ShowFromTray());
+        trayMenu.Items.Add("打开", null, (_, _) => ShowDashboard());
         trayMenu.Items.Add("刷新", null, async (_, _) => await RefreshAsync(forcePush: true));
         trayMenu.Items.Add("设置", null, (_, _) => ShowSettings());
         trayMenu.Items.Add(new ToolStripSeparator());
@@ -62,12 +63,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             if (eventArgs.Button == MouseButtons.Left)
             {
-                dashboard.ShowFromTray();
+                ShowDashboard();
             }
         };
-        trayIcon.DoubleClick += (_, _) => dashboard.ShowFromTray();
+        trayIcon.DoubleClick += (_, _) => ShowDashboard();
         taskbarReadout = new TaskbarReadoutForm(trayMenu);
-        taskbarReadout.OpenRequested += (_, _) => dashboard.ShowFromTray();
+        taskbarReadout.OpenRequested += (_, _) => ShowDashboard();
         taskbarReadout.Start();
 
         refreshTimer = new System.Windows.Forms.Timer
@@ -76,17 +77,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
         refreshTimer.Tick += async (_, _) => await RefreshAsync(forcePush: false);
         refreshTimer.Start();
-        dashboard.SetRefreshCadence(settings.RefreshSeconds);
-        dashboard.SetStartupEnabled(settings.StartWithWindows);
+        Dashboard.SetRefreshCadence(settings.RefreshSeconds);
+        Dashboard.SetStartupEnabled(settings.StartWithWindows);
         if (showDashboard)
         {
-            dashboard.ShowFromTray();
+            ShowDashboard();
         }
         _ = RefreshAsync(forcePush: true);
     }
 
     protected override void ExitThreadCore()
     {
+        exiting = true;
         refreshTimer.Stop();
         cancellation.Cancel();
         taskbarReadout.Dispose();
@@ -96,27 +98,39 @@ internal sealed class TrayApplicationContext : ApplicationContext
         trayMenu.Dispose();
         rateIcon?.Dispose();
         applicationIcon.Dispose();
-        dashboard.CloseForExit();
         dashboard.Dispose();
         cancellation.Dispose();
         base.ExitThreadCore();
     }
 
-    private DashboardForm CreateDashboard(string sessionsRoot)
+    private DashboardForm Dashboard => dashboard.Current;
+
+    private DashboardForm CreateDashboard()
     {
-        var form = new DashboardForm(sessionsRoot);
+        var form = new DashboardForm(scanner.SessionsRoot);
         form.SettingsRequested += (_, _) => ShowSettings();
         form.RefreshRequested += async (_, _) => await RefreshAsync(forcePush: true);
         form.SessionsFolderRequested += (_, _) => OpenSessionsDirectory();
         form.ExitRequested += (_, _) => ExitThread();
         form.RefreshCadenceChanged += SetRefreshCadence;
         form.StartupChanged += SetStartupEnabled;
+        form.UpdateSnapshot(lastSnapshot, ambientOps.Connection);
+        form.SetRefreshCadence(settings.RefreshSeconds);
+        form.SetStartupEnabled(settings.StartWithWindows);
         return form;
+    }
+
+    private void ShowDashboard()
+    {
+        if (!exiting)
+        {
+            Dashboard.ShowFromTray();
+        }
     }
 
     private async Task RefreshAsync(bool forcePush)
     {
-        if (refreshing)
+        if (refreshing || exiting)
         {
             return;
         }
@@ -130,7 +144,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 scanner.CodexHome,
                 forcePush,
                 cancellation.Token);
-            dashboard.UpdateSnapshot(lastSnapshot, ambientOps.Connection);
+            if (exiting)
+            {
+                return;
+            }
+            Dashboard.UpdateSnapshot(lastSnapshot, ambientOps.Connection);
             OpenPairingApprovalIfNeeded(ambientOps.Connection);
             UpdateTrayRateIcon(lastSnapshot);
             taskbarReadout.SetRate(
@@ -147,7 +165,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception error)
         {
-            dashboard.UpdateSnapshot(
+            if (exiting)
+            {
+                return;
+            }
+            Dashboard.UpdateSnapshot(
                 lastSnapshot,
                 new AmbientOpsConnectionStatus(
                     AmbientOpsConnectionKind.Failed,
@@ -177,8 +199,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void ShowSettings()
     {
+        if (exiting)
+        {
+            return;
+        }
+        var owner = Dashboard;
         using var form = new SettingsForm(settings, ambientOps.Connection);
-        if (form.ShowDialog(dashboard) != DialogResult.OK || form.ResultSettings is not { } next)
+        if (form.ShowDialog(owner) != DialogResult.OK || form.ResultSettings is not { } next)
         {
             return;
         }
@@ -201,16 +228,16 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
             settings = next;
             scanner = CreateScanner(settings);
-            dashboard.UpdateSessionsRoot(scanner.SessionsRoot);
+            Dashboard.UpdateSessionsRoot(scanner.SessionsRoot);
             refreshTimer.Interval = settings.RefreshSeconds * 1_000;
-            dashboard.SetRefreshCadence(settings.RefreshSeconds);
-            dashboard.SetStartupEnabled(settings.StartWithWindows);
+            Dashboard.SetRefreshCadence(settings.RefreshSeconds);
+            Dashboard.SetStartupEnabled(settings.StartWithWindows);
             _ = RefreshAsync(forcePush: true);
         }
         catch (Exception error)
         {
             MessageBox.Show(
-                dashboard,
+                Dashboard,
                 error.Message,
                 "Settings could not be saved",
                 MessageBoxButtons.OK,
@@ -277,7 +304,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         catch (Exception error)
         {
             settings.RefreshSeconds = previous;
-            dashboard.SetRefreshCadence(previous);
+            Dashboard.SetRefreshCadence(previous);
             ShowError("刷新间隔无法保存", error);
         }
     }
@@ -290,13 +317,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
             StartupRegistration.SetEnabled(enabled);
             settings.StartWithWindows = enabled;
             settingsStore.Save(settings);
-            dashboard.SetStartupEnabled(enabled);
+            Dashboard.SetStartupEnabled(enabled);
         }
         catch (Exception error)
         {
             StartupRegistration.SetEnabled(previous);
             settings.StartWithWindows = previous;
-            dashboard.SetStartupEnabled(previous);
+            Dashboard.SetStartupEnabled(previous);
             ShowError("登录启动无法更新", error);
         }
     }
@@ -318,9 +345,46 @@ internal sealed class TrayApplicationContext : ApplicationContext
     }
 
     private void ShowError(string title, Exception error) => MessageBox.Show(
-        dashboard,
+        Dashboard,
         error.Message,
         title,
         MessageBoxButtons.OK,
         MessageBoxIcon.Error);
+}
+
+internal sealed class DashboardFormSlot(Func<DashboardForm> createForm) : IDisposable
+{
+    private DashboardForm? current;
+    private bool disposed;
+
+    public DashboardForm Current
+    {
+        get
+        {
+            if (disposed)
+            {
+                throw new ObjectDisposedException(nameof(DashboardFormSlot));
+            }
+            if (current is null || current.IsDisposed || current.Disposing)
+            {
+                current = createForm();
+            }
+            return current;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+        disposed = true;
+        if (current is { IsDisposed: false })
+        {
+            current.CloseForExit();
+            current.Dispose();
+        }
+        current = null;
+    }
 }

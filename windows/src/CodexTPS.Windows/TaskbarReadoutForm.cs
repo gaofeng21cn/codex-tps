@@ -1,11 +1,14 @@
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using Microsoft.Win32;
 
 namespace CodexTPS.WindowsApp;
 
 internal sealed class TaskbarReadoutForm : Form
 {
     private const int WsExNoActivate = 0x08000000;
+    private const int WsExLayered = 0x00080000;
     private const int WsExToolWindow = 0x00000080;
     private const uint AbmGetState = 0x00000004;
     private const uint AbsAutoHide = 0x00000001;
@@ -19,26 +22,20 @@ internal sealed class TaskbarReadoutForm : Form
         Interval = 1_000,
     };
     private TaskbarEdge edge = TaskbarEdge.Bottom;
+    private Rectangle readoutBounds;
+    private int taskbarDpi = 96;
     private string rateText = "-- t/s";
 
     public TaskbarReadoutForm(ContextMenuStrip contextMenu)
     {
         AccessibleName = "Codex TPS 任务栏读数";
-        BackColor = Color.FromArgb(36, 36, 38);
         ContextMenuStrip = contextMenu;
         Cursor = Cursors.Hand;
-        DoubleBuffered = true;
         FormBorderStyle = FormBorderStyle.None;
         ShowInTaskbar = false;
         StartPosition = FormStartPosition.Manual;
         TopMost = true;
 
-        SetStyle(
-            ControlStyles.AllPaintingInWmPaint |
-            ControlStyles.OptimizedDoubleBuffer |
-            ControlStyles.ResizeRedraw |
-            ControlStyles.UserPaint,
-            value: true);
         placementTimer.Tick += (_, _) => RefreshPlacement();
     }
 
@@ -51,7 +48,7 @@ internal sealed class TaskbarReadoutForm : Form
         get
         {
             var parameters = base.CreateParams;
-            parameters.ExStyle |= WsExNoActivate | WsExToolWindow;
+            parameters.ExStyle |= WsExLayered | WsExNoActivate | WsExToolWindow;
             return parameters;
         }
     }
@@ -74,7 +71,7 @@ internal sealed class TaskbarReadoutForm : Form
 
         rateText = next;
         AccessibleDescription = $"当前吞吐率 {next}";
-        Invalidate();
+        RenderReadout();
     }
 
     protected override void OnMouseClick(MouseEventArgs eventArgs)
@@ -84,60 +81,6 @@ internal sealed class TaskbarReadoutForm : Form
         {
             OpenRequested?.Invoke(this, EventArgs.Empty);
         }
-    }
-
-    protected override void OnPaint(PaintEventArgs eventArgs)
-    {
-        base.OnPaint(eventArgs);
-        eventArgs.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        eventArgs.Graphics.TextRenderingHint =
-            System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-        var radius = Math.Max(4, 5 * DeviceDpi / 96);
-        using var background = RoundedRectangle(
-            new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)),
-            radius);
-        using var backgroundBrush = new SolidBrush(Color.FromArgb(36, 36, 38));
-        eventArgs.Graphics.FillPath(backgroundBrush, background);
-
-        var vertical = edge is TaskbarEdge.Left or TaskbarEdge.Right;
-        var displayText = vertical
-            ? rateText.Replace(" ", Environment.NewLine, StringComparison.Ordinal)
-            : rateText;
-        using var textBrush = new SolidBrush(Color.White);
-        using var font = new Font(
-            "Segoe UI Variable Text",
-            vertical ? 8f : 9f,
-            FontStyle.Bold);
-        using var format = new StringFormat
-        {
-            Alignment = StringAlignment.Center,
-            LineAlignment = StringAlignment.Center,
-            FormatFlags = StringFormatFlags.NoWrap,
-        };
-        eventArgs.Graphics.DrawString(
-            displayText,
-            font,
-            textBrush,
-            ClientRectangle,
-            format);
-    }
-
-    protected override void OnSizeChanged(EventArgs eventArgs)
-    {
-        base.OnSizeChanged(eventArgs);
-        if (Width <= 0 || Height <= 0)
-        {
-            return;
-        }
-
-        var radius = Math.Max(4, 5 * DeviceDpi / 96);
-        using var path = RoundedRectangle(
-            new Rectangle(0, 0, Width, Height),
-            radius);
-        var previous = Region;
-        Region = new Region(path);
-        previous?.Dispose();
     }
 
     protected override void Dispose(bool disposing)
@@ -161,6 +104,7 @@ internal sealed class TaskbarReadoutForm : Form
 
         var placement = TaskbarPlacement.Calculate(geometry);
         edge = placement.Edge;
+        taskbarDpi = geometry.Dpi > 0 ? geometry.Dpi : 96;
         if (!placement.IsVisible)
         {
             Hide();
@@ -180,25 +124,27 @@ internal sealed class TaskbarReadoutForm : Form
             placement.Bounds.Width,
             placement.Bounds.Height,
             SwpNoActivate | SwpShowWindow);
-        Invalidate();
+        readoutBounds = placement.Bounds;
+        RenderReadout();
     }
 
-    private static GraphicsPath RoundedRectangle(Rectangle rectangle, float radius)
+    private void RenderReadout()
     {
-        var diameter = radius * 2;
-        var path = new GraphicsPath();
-        path.AddArc(rectangle.Left, rectangle.Top, diameter, diameter, 180, 90);
-        path.AddArc(rectangle.Right - diameter, rectangle.Top, diameter, diameter, 270, 90);
-        path.AddArc(
-            rectangle.Right - diameter,
-            rectangle.Bottom - diameter,
-            diameter,
-            diameter,
-            0,
-            90);
-        path.AddArc(rectangle.Left, rectangle.Bottom - diameter, diameter, diameter, 90, 90);
-        path.CloseFigure();
-        return path;
+        if (!IsHandleCreated || !Visible || readoutBounds.Width <= 0 || readoutBounds.Height <= 0)
+        {
+            return;
+        }
+
+        var textColor = SystemInformation.HighContrast
+            ? SystemColors.WindowText
+            : TaskbarReadoutAppearance.TextColor(TaskbarTheme.UsesLightTheme());
+        using var bitmap = TaskbarReadoutAppearance.Render(
+            readoutBounds.Size,
+            rateText,
+            edge,
+            taskbarDpi,
+            textColor);
+        LayeredWindow.Update(Handle, readoutBounds, bitmap);
     }
 
     private static string Compact(double value) => value switch
@@ -207,6 +153,26 @@ internal sealed class TaskbarReadoutForm : Form
         >= 1_000 => $"{value / 1_000:0.0}K",
         _ => $"{value:0.0}",
     };
+
+    private static class TaskbarTheme
+    {
+        private const string PersonalizeKey =
+            @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+
+        public static bool UsesLightTheme()
+        {
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(PersonalizeKey);
+                return key?.GetValue("SystemUsesLightTheme") is not int value || value != 0;
+            }
+            catch (Exception error) when (
+                error is System.Security.SecurityException or UnauthorizedAccessException or IOException)
+            {
+                return true;
+            }
+        }
+    }
 
     [DllImport("user32.dll")]
     private static extern bool SetWindowPos(
@@ -372,5 +338,181 @@ internal sealed class TaskbarReadoutForm : Form
             public NativeRectangle Rectangle;
             public IntPtr Parameter;
         }
+    }
+}
+
+internal static class TaskbarReadoutAppearance
+{
+    internal const byte TransparentHitTestAlpha = 1;
+    private const float HorizontalFontLogicalPixels = 12f;
+    private const float VerticalFontLogicalPixels = 11f;
+
+    public static FontStyle TextFontStyle => FontStyle.Regular;
+
+    public static float FontPixelSize(TaskbarEdge edge, int dpi)
+    {
+        var logicalPixels = edge is TaskbarEdge.Left or TaskbarEdge.Right
+            ? VerticalFontLogicalPixels
+            : HorizontalFontLogicalPixels;
+        var effectiveDpi = dpi > 0 ? dpi : 96;
+        return logicalPixels * effectiveDpi / 96f;
+    }
+
+    public static Color TextColor(bool lightTheme) => lightTheme
+        ? Color.FromArgb(32, 32, 32)
+        : Color.White;
+
+    public static Bitmap Render(
+        Size size,
+        string rateText,
+        TaskbarEdge edge,
+        int dpi,
+        Color textColor)
+    {
+        var bitmap = new Bitmap(
+            Math.Max(1, size.Width),
+            Math.Max(1, size.Height),
+            PixelFormat.Format32bppPArgb);
+        using var graphics = Graphics.FromImage(bitmap);
+        graphics.CompositingMode = CompositingMode.SourceCopy;
+        graphics.Clear(Color.FromArgb(TransparentHitTestAlpha, 0, 0, 0));
+        graphics.CompositingMode = CompositingMode.SourceOver;
+        graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
+
+        var vertical = edge is TaskbarEdge.Left or TaskbarEdge.Right;
+        var displayText = vertical
+            ? rateText.Replace(" ", Environment.NewLine, StringComparison.Ordinal)
+            : rateText;
+        using var textBrush = new SolidBrush(textColor);
+        using var font = new Font(
+            "Segoe UI Variable Text",
+            FontPixelSize(edge, dpi),
+            TextFontStyle,
+            GraphicsUnit.Pixel);
+        using var format = new StringFormat
+        {
+            Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center,
+            FormatFlags = StringFormatFlags.NoWrap,
+        };
+        graphics.DrawString(
+            displayText,
+            font,
+            textBrush,
+            new Rectangle(Point.Empty, bitmap.Size),
+            format);
+        return bitmap;
+    }
+}
+
+internal static class LayeredWindow
+{
+    private const byte AcSrcOver = 0;
+    private const byte AcSrcAlpha = 1;
+    private const uint UlwAlpha = 0x00000002;
+
+    public static bool Update(IntPtr window, Rectangle bounds, Bitmap bitmap)
+    {
+        var screenDc = GetDC(IntPtr.Zero);
+        if (screenDc == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var memoryDc = CreateCompatibleDC(screenDc);
+        if (memoryDc == IntPtr.Zero)
+        {
+            ReleaseDC(IntPtr.Zero, screenDc);
+            return false;
+        }
+
+        var bitmapHandle = bitmap.GetHbitmap(Color.FromArgb(0));
+        var previousBitmap = SelectObject(memoryDc, bitmapHandle);
+        try
+        {
+            var destination = new NativePoint(bounds.X, bounds.Y);
+            var source = new NativePoint(0, 0);
+            var size = new NativeSize(bounds.Width, bounds.Height);
+            var blend = new BlendFunction
+            {
+                BlendOp = AcSrcOver,
+                SourceConstantAlpha = byte.MaxValue,
+                AlphaFormat = AcSrcAlpha,
+            };
+            return UpdateLayeredWindow(
+                window,
+                screenDc,
+                ref destination,
+                ref size,
+                memoryDc,
+                ref source,
+                0,
+                ref blend,
+                UlwAlpha);
+        }
+        finally
+        {
+            SelectObject(memoryDc, previousBitmap);
+            DeleteObject(bitmapHandle);
+            DeleteDC(memoryDc);
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetDC(IntPtr window);
+
+    [DllImport("user32.dll")]
+    private static extern int ReleaseDC(IntPtr window, IntPtr deviceContext);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr CreateCompatibleDC(IntPtr deviceContext);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteDC(IntPtr deviceContext);
+
+    [DllImport("gdi32.dll")]
+    private static extern IntPtr SelectObject(IntPtr deviceContext, IntPtr value);
+
+    [DllImport("gdi32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool DeleteObject(IntPtr value);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UpdateLayeredWindow(
+        IntPtr window,
+        IntPtr destinationDc,
+        ref NativePoint destination,
+        ref NativeSize size,
+        IntPtr sourceDc,
+        ref NativePoint source,
+        uint colorKey,
+        ref BlendFunction blend,
+        uint flags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint(int x, int y)
+    {
+        public int X = x;
+        public int Y = y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeSize(int width, int height)
+    {
+        public int Width = width;
+        public int Height = height;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct BlendFunction
+    {
+        public byte BlendOp;
+        public byte BlendFlags;
+        public byte SourceConstantAlpha;
+        public byte AlphaFormat;
     }
 }
