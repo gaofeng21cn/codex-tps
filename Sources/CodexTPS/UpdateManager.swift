@@ -164,10 +164,13 @@ final class UpdateManager: ObservableObject {
     process.arguments = [scriptURL.path]
 
     var environment = ProcessInfo.processInfo.environment
+    let runningAppURL = Bundle.main.bundleURL.resolvingSymlinksInPath()
     environment["CODEX_TPS_DMG_URL"] = release.dmgURL.absoluteString
     environment["CODEX_TPS_CHECKSUM_URL"] = release.checksumURL.absoluteString
     environment["CODEX_TPS_EXPECTED_VERSION"] = release.version.description
-    environment["CODEX_TPS_INSTALL_DIR"] = Bundle.main.bundleURL.deletingLastPathComponent().path
+    environment["CODEX_TPS_INSTALL_DIR"] = runningAppURL.deletingLastPathComponent().path
+    environment["CODEX_TPS_RUNNING_PID"] = String(ProcessInfo.processInfo.processIdentifier)
+    environment["CODEX_TPS_RUNNING_APP"] = runningAppURL.path
 
     let logURL = FileManager.default.temporaryDirectory
       .appendingPathComponent("codex-tps-update-\(UUID().uuidString).log")
