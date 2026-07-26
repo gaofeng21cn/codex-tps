@@ -8,7 +8,7 @@ Codex home and can send aggregate metrics to Ambient Ops on the local network.
 
 - Default input: `%USERPROFILE%\.codex\sessions`
 - Override: set `CODEX_HOME`, or select a Codex home in Settings
-- Taskbar readout renders theme-aware TPS as plain text without a background badge; clicking it opens the dashboard
+- Taskbar readout renders large, waveform-prefixed TPS text without a background badge; clicking it opens the dashboard
 - Five-second local refresh; Ambient Ops pushes are limited to once per ten seconds
 - `_ambient-ops._tcp.local.` DNS-SD discovery with preferred-instance and fallback behavior
 - Manual Ambient Ops HTTP(S) URL override
@@ -93,7 +93,7 @@ windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
 To build the standard installer, also install Inno Setup 6 and run:
 
 ```powershell
-pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.16
+pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.17
 ```
 
 This additionally creates:

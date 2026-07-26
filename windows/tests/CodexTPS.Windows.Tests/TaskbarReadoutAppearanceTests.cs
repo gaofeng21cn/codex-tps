@@ -5,9 +5,9 @@ namespace CodexTPS.Windows.Tests;
 public sealed class TaskbarReadoutAppearanceTests
 {
     [Theory]
-    [InlineData((int)TaskbarEdge.Bottom, 96, 12)]
-    [InlineData((int)TaskbarEdge.Bottom, 144, 18)]
-    [InlineData((int)TaskbarEdge.Top, 192, 24)]
+    [InlineData((int)TaskbarEdge.Bottom, 96, 24)]
+    [InlineData((int)TaskbarEdge.Bottom, 144, 36)]
+    [InlineData((int)TaskbarEdge.Top, 192, 48)]
     [InlineData((int)TaskbarEdge.Left, 96, 11)]
     [InlineData((int)TaskbarEdge.Right, 192, 22)]
     public void FontPixelSizeScalesWithTaskbarDpi(
@@ -24,7 +24,7 @@ public sealed class TaskbarReadoutAppearanceTests
     public void InvalidDpiFallsBackToNinetySix()
     {
         Assert.Equal(
-            12,
+            24,
             TaskbarReadoutAppearance.FontPixelSize(TaskbarEdge.Bottom, 0));
     }
 
@@ -35,7 +35,7 @@ public sealed class TaskbarReadoutAppearanceTests
     }
 
     [Theory]
-    [InlineData(true, 32, 32, 32)]
+    [InlineData(true, 0, 0, 0)]
     [InlineData(false, 255, 255, 255)]
     public void TextColorTracksTaskbarTheme(
         bool lightTheme,
@@ -50,11 +50,23 @@ public sealed class TaskbarReadoutAppearanceTests
         Assert.Equal(blue, color.B);
     }
 
+    [Theory]
+    [InlineData((int)TaskbarEdge.Bottom, "∿ 12.5K t/s")]
+    [InlineData((int)TaskbarEdge.Left, "∿\n12.5K\nt/s")]
+    public void DisplayTextIncludesWaveformIndicator(int edgeValue, string expected)
+    {
+        Assert.Equal(
+            expected.Replace("\n", Environment.NewLine, StringComparison.Ordinal),
+            TaskbarReadoutAppearance.DisplayText(
+                "12.5K t/s",
+                (TaskbarEdge)edgeValue));
+    }
+
     [Fact]
     public void RenderKeepsBackgroundTransparentAndClickTargetPresent()
     {
         using var bitmap = TaskbarReadoutAppearance.Render(
-            new Size(112, 28),
+            new Size(152, 40),
             "12.5K t/s",
             TaskbarEdge.Bottom,
             96,

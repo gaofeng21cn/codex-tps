@@ -22,15 +22,16 @@ internal readonly record struct TaskbarPlacement(
     bool IsVisible)
 {
     private const int HiddenEdgeLogicalPixels = 8;
-    private const int HorizontalWidthLogicalPixels = 112;
-    private const int HorizontalHeightLogicalPixels = 28;
-    private const int HorizontalMinimumWidthLogicalPixels = 72;
-    private const int HorizontalMinimumHeightLogicalPixels = 20;
+    private const int HorizontalWidthLogicalPixels = 152;
+    private const int HorizontalHeightLogicalPixels = 40;
+    private const int HorizontalMinimumWidthLogicalPixels = 128;
+    private const int HorizontalMinimumHeightLogicalPixels = 32;
     private const int VerticalWidthLogicalPixels = 42;
     private const int VerticalHeightLogicalPixels = 52;
     private const int VerticalMinimumWidthLogicalPixels = 28;
     private const int VerticalMinimumHeightLogicalPixels = 36;
-    private const int InsetLogicalPixels = 4;
+    private const int HorizontalInsetLogicalPixels = 2;
+    private const int VerticalInsetLogicalPixels = 4;
     private const int NotificationGapLogicalPixels = 6;
 
     public static TaskbarPlacement Calculate(TaskbarGeometry geometry)
@@ -114,7 +115,7 @@ internal readonly record struct TaskbarPlacement(
         Rectangle taskbar,
         TaskbarEdge edge)
     {
-        var inset = Scale(InsetLogicalPixels, geometry.Dpi);
+        var inset = Scale(HorizontalInsetLogicalPixels, geometry.Dpi);
         var gap = Scale(NotificationGapLogicalPixels, geometry.Dpi);
         var left = taskbar.Left + inset;
         var notificationLeft = NotificationAnchor(
@@ -153,7 +154,7 @@ internal readonly record struct TaskbarPlacement(
         Rectangle taskbar,
         TaskbarEdge edge)
     {
-        var inset = Scale(InsetLogicalPixels, geometry.Dpi);
+        var inset = Scale(VerticalInsetLogicalPixels, geometry.Dpi);
         var gap = Scale(NotificationGapLogicalPixels, geometry.Dpi);
         var top = taskbar.Top + inset;
         var notificationTop = NotificationAnchor(
