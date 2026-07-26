@@ -6,6 +6,7 @@ enum AmbientOpsConnectionState: Equatable {
   case disabled
   case discovering
   case ready(name: String, endpoint: URL)
+  case pairing(name: String, endpoint: URL, verificationCode: String, approvalURL: URL)
   case pushing(name: String, endpoint: URL)
   case live(name: String, endpoint: URL, pushedAt: Date)
   case failed(message: String)
@@ -18,6 +19,8 @@ enum AmbientOpsConnectionState: Equatable {
       "正在自动发现"
     case .ready(let name, _):
       "已发现 \(name)"
+    case .pairing(_, _, let verificationCode, _):
+      "等待批准 · 配对码 \(verificationCode)"
     case .pushing(let name, _):
       "正在推送到 \(name)"
     case .live(let name, _, _):
@@ -30,7 +33,7 @@ enum AmbientOpsConnectionState: Equatable {
   var endpoint: URL? {
     switch self {
     case .ready(_, let endpoint), .pushing(_, let endpoint),
-      .live(_, let endpoint, _):
+      .live(_, let endpoint, _), .pairing(_, let endpoint, _, _):
       endpoint
     case .disabled, .discovering, .failed:
       nil
@@ -40,6 +43,11 @@ enum AmbientOpsConnectionState: Equatable {
   var isLive: Bool {
     if case .live = self { return true }
     return false
+  }
+
+  var pairingApprovalURL: URL? {
+    guard case .pairing(_, _, _, let approvalURL) = self else { return nil }
+    return approvalURL
   }
 }
 
@@ -65,8 +73,49 @@ enum AmbientOpsPetChoice: String, CaseIterable, Identifiable {
 
 struct AmbientOpsKeychain {
   static let service = "cn.gaofeng.ambient-ops.agent-push"
+  static let deviceKeyService = "cn.gaofeng.codex-tps.device-key"
 
   static func token(account: String = NSUserName()) -> String? {
+    guard let data = data(service: service, account: account) else { return nil }
+    guard
+      let token = String(data: data, encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+      !token.isEmpty
+    else { return nil }
+    return token
+  }
+
+  static func deviceKey(account: String = NSUserName()) throws -> AmbientOpsDeviceKey {
+    if let saved = data(service: deviceKeyService, account: account) {
+      do {
+        return try AmbientOpsDeviceKey(rawRepresentation: saved)
+      } catch {
+        throw AmbientOpsKeychainError.invalidDeviceKey
+      }
+    }
+
+    let created = AmbientOpsDeviceKey()
+    let add: [CFString: Any] = [
+      kSecClass: kSecClassGenericPassword,
+      kSecAttrService: deviceKeyService,
+      kSecAttrAccount: account,
+      kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+      kSecValueData: created.rawRepresentation,
+    ]
+    let status = SecItemAdd(add as CFDictionary, nil)
+    if status == errSecSuccess {
+      return created
+    }
+    if status == errSecDuplicateItem,
+      let saved = data(service: deviceKeyService, account: account),
+      let existing = try? AmbientOpsDeviceKey(rawRepresentation: saved)
+    {
+      return existing
+    }
+    throw AmbientOpsKeychainError.unexpectedStatus(status)
+  }
+
+  private static func data(service: String, account: String) -> Data? {
     let query: [CFString: Any] = [
       kSecClass: kSecClassGenericPassword,
       kSecAttrService: service,
@@ -77,12 +126,23 @@ struct AmbientOpsKeychain {
     var result: CFTypeRef?
     guard
       SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-      let data = result as? Data,
-      let token = String(data: data, encoding: .utf8)?
-        .trimmingCharacters(in: .whitespacesAndNewlines),
-      !token.isEmpty
+      let data = result as? Data
     else { return nil }
-    return token
+    return data
+  }
+}
+
+enum AmbientOpsKeychainError: LocalizedError {
+  case invalidDeviceKey
+  case unexpectedStatus(OSStatus)
+
+  var errorDescription: String? {
+    switch self {
+    case .invalidDeviceKey:
+      return "Keychain 中的设备配对密钥无效"
+    case .unexpectedStatus(let status):
+      return "无法将设备配对密钥存入 Keychain（\(status)）"
+    }
   }
 }
 

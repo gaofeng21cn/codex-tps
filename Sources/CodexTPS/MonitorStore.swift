@@ -26,6 +26,9 @@ final class MonitorStore: ObservableObject {
   private var refreshLoop: Task<Void, Never>?
   private var ambientPushTask: Task<Void, Never>?
   private var ambientService: AmbientOpsService?
+  private var ambientPairingSession: AmbientOpsPairingSession?
+  private var ambientPairingEndpoint: URL?
+  private var openedAmbientPairingRequestID: String?
   private var lastAmbientSnapshot: AmbientOpsAgentSnapshot?
   private var ambientPetTracker = AmbientOpsPetTracker()
   private static let selectedWindowDefaultsKey = "selectedMetricWindow"
@@ -111,6 +114,7 @@ final class MonitorStore: ObservableObject {
   func setAmbientEnabled(_ enabled: Bool) {
     ambientEnabled = enabled
     UserDefaults.standard.set(enabled, forKey: Self.ambientEnabledDefaultsKey)
+    resetAmbientPairing()
     refreshAmbientConfiguration()
     if enabled {
       Task { await refresh() }
@@ -121,6 +125,7 @@ final class MonitorStore: ObservableObject {
     ambientAutoDiscover = enabled
     UserDefaults.standard.set(enabled, forKey: Self.ambientAutoDiscoverDefaultsKey)
     ambientService = nil
+    resetAmbientPairing()
     refreshAmbientConfiguration()
     if ambientEnabled {
       Task { await refresh() }
@@ -131,6 +136,7 @@ final class MonitorStore: ObservableObject {
     ambientManualURL = value
     UserDefaults.standard.set(value, forKey: Self.ambientManualURLDefaultsKey)
     guard !ambientAutoDiscover else { return }
+    resetAmbientPairing()
     refreshAmbientConfiguration()
   }
 
@@ -147,8 +153,14 @@ final class MonitorStore: ObservableObject {
   func rediscoverAmbientOps() {
     UserDefaults.standard.removeObject(forKey: Self.ambientInstanceIDDefaultsKey)
     ambientService = nil
+    resetAmbientPairing()
     ambientDiscovery.stop()
     refreshAmbientConfiguration()
+  }
+
+  func openAmbientPairingApproval() {
+    guard let url = ambientConnection.pairingApprovalURL else { return }
+    NSWorkspace.shared.open(url)
   }
 
   func openSessionsDirectory() {
@@ -186,6 +198,9 @@ final class MonitorStore: ObservableObject {
     }
     ambientDiscovery.onServiceResolved = { [weak self] service in
       guard let self, ambientEnabled, ambientAutoDiscover else { return }
+      if ambientService?.endpoint != service.endpoint {
+        resetAmbientPairing()
+      }
       ambientService = service
       UserDefaults.standard.set(service.instanceID, forKey: Self.ambientInstanceIDDefaultsKey)
       ambientConnection = .ready(name: service.name, endpoint: service.endpoint)
@@ -202,12 +217,6 @@ final class MonitorStore: ObservableObject {
       ambientConnection = .disabled
       return
     }
-    guard AmbientOpsKeychain.token() != nil else {
-      ambientDiscovery.stop()
-      ambientConnection = .failed(message: "Keychain 中缺少推送令牌")
-      return
-    }
-
     if ambientAutoDiscover {
       let preferredID = UserDefaults.standard.string(
         forKey: Self.ambientInstanceIDDefaultsKey)
@@ -248,11 +257,17 @@ final class MonitorStore: ObservableObject {
       endpoint = manualAmbientEndpoint
       name = endpoint?.host ?? "Ambient Ops"
     }
-    guard let endpoint, let token = AmbientOpsKeychain.token() else { return }
+    guard let endpoint else { return }
+    let token = AmbientOpsKeychain.token()
+    if token == nil, ambientAutoDiscover, service?.supportsPairing != true {
+      ambientConnection = .failed(message: "此 Ambient Ops 不支持安全配对")
+      return
+    }
     let reportLocalPet = ambientPet == .localCodex
 
     ambientPushTask = Task { [weak self] in
       guard let self else { return }
+      defer { ambientPushTask = nil }
       ambientConnection = .pushing(name: name, endpoint: endpoint)
       do {
         let petAsset = reportLocalPet ? await ambientPetCatalog.currentAsset() : nil
@@ -260,24 +275,38 @@ final class MonitorStore: ObservableObject {
           ambientPetTracker.snapshot(definition: $0.definition, usage: usage)
         }
         let identity = try AmbientOpsMachineIdentity.localMachine(machineID: ambientMachineID)
-        let request = try AmbientOpsPushRequest(
-          endpoint: endpoint,
-          token: token,
-          identity: identity
-        )
         let payload = AmbientOpsAgentSnapshot(
           usage: usage,
           identity: identity,
           fallback: lastAmbientSnapshot,
           pet: pet
         )
-        try await AmbientOpsPushClient(request: request).push(payload, petAsset: petAsset)
+        if let token {
+          let request = try AmbientOpsPushRequest(
+            endpoint: endpoint,
+            token: token,
+            identity: identity
+          )
+          try await AmbientOpsPushClient(request: request).push(payload, petAsset: petAsset)
+        } else {
+          let deviceKey = try AmbientOpsKeychain.deviceKey()
+          try await pushSignedAmbient(
+            payload,
+            petAsset: petAsset,
+            endpoint: endpoint,
+            name: name,
+            identity: identity,
+            deviceKey: deviceKey
+          )
+        }
         if usage.status == .ready {
           lastAmbientSnapshot = payload
         }
         ambientConnection = .live(name: name, endpoint: endpoint, pushedAt: Date())
       } catch is CancellationError {
         return
+      } catch AmbientOpsPairingError.rejected {
+        ambientConnection = .failed(message: "配对请求已拒绝 · 请重新发现后重试")
       } catch {
         ambientConnection = .failed(message: "推送失败：\(error.localizedDescription)")
         if ambientAutoDiscover {
@@ -286,8 +315,99 @@ final class MonitorStore: ObservableObject {
           ambientDiscovery.start(preferredInstanceID: nil)
         }
       }
-      ambientPushTask = nil
     }
+  }
+
+  private func pushSignedAmbient(
+    _ payload: AmbientOpsAgentSnapshot,
+    petAsset: AmbientOpsPetAsset?,
+    endpoint: URL,
+    name: String,
+    identity: AmbientOpsMachineIdentity,
+    deviceKey: AmbientOpsDeviceKey
+  ) async throws {
+    let signedRequest = try AmbientOpsSignedPushRequest(
+      endpoint: endpoint,
+      deviceKey: deviceKey,
+      identity: identity
+    )
+    let client = AmbientOpsPushClient(signedRequest: signedRequest)
+    do {
+      try await client.push(payload, petAsset: petAsset)
+      resetAmbientPairing()
+      return
+    } catch let error as AmbientOpsPushError
+      where error == .server(401) || error == .server(403)
+    {
+      try await awaitAmbientPairing(
+        endpoint: endpoint,
+        name: name,
+        identity: identity,
+        deviceKey: deviceKey
+      )
+      ambientConnection = .pushing(name: name, endpoint: endpoint)
+      try await client.push(payload, petAsset: petAsset)
+      resetAmbientPairing()
+    }
+  }
+
+  private func awaitAmbientPairing(
+    endpoint: URL,
+    name: String,
+    identity: AmbientOpsMachineIdentity,
+    deviceKey: AmbientOpsDeviceKey
+  ) async throws {
+    let client = AmbientOpsPairingClient()
+    if ambientPairingEndpoint != endpoint {
+      resetAmbientPairing()
+      ambientPairingEndpoint = endpoint
+    }
+
+    var pairing = ambientPairingSession
+    if pairing == nil {
+      pairing = try await client.begin(
+        endpoint: endpoint,
+        identity: identity,
+        deviceKey: deviceKey
+      )
+    }
+
+    while let current = pairing {
+      ambientPairingSession = current
+      switch current.status {
+      case "approved":
+        return
+      case "rejected":
+        throw AmbientOpsPairingError.rejected
+      case "pending":
+        let approvalURL = try AmbientOpsPairingClient.approvalURL(
+          endpoint: endpoint,
+          pairing: current
+        )
+        ambientConnection = .pairing(
+          name: name,
+          endpoint: endpoint,
+          verificationCode: try deviceKey.verificationCode,
+          approvalURL: approvalURL
+        )
+        if openedAmbientPairingRequestID != current.requestID {
+          openedAmbientPairingRequestID = current.requestID
+          NSWorkspace.shared.open(approvalURL)
+        }
+        let pollSeconds = max(1, min(current.pollAfterSeconds, 10))
+        try await Task.sleep(for: .seconds(pollSeconds))
+        pairing = try await client.get(endpoint: endpoint, requestID: current.requestID)
+      default:
+        throw AmbientOpsPairingError.invalidResponse
+      }
+    }
+    throw AmbientOpsPairingError.expired
+  }
+
+  private func resetAmbientPairing() {
+    ambientPairingSession = nil
+    ambientPairingEndpoint = nil
+    openedAmbientPairingRequestID = nil
   }
 }
 

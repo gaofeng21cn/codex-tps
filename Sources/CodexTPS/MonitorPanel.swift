@@ -279,6 +279,13 @@ struct MonitorPanel: View {
           .truncationMode(.middle)
       }
 
+      if store.ambientConnection.pairingApprovalURL != nil {
+        Button(action: store.openAmbientPairingApproval) {
+          Label("打开配对批准页", systemImage: "checkmark.shield")
+        }
+        .controlSize(.small)
+      }
+
       HStack {
         Label("宠物", systemImage: "bird")
           .font(.caption)
@@ -310,7 +317,7 @@ struct MonitorPanel: View {
       return .red
     case .disabled:
       return .secondary
-    case .discovering, .ready, .pushing:
+    case .discovering, .ready, .pairing, .pushing:
       return .orange
     case .live:
       return .green

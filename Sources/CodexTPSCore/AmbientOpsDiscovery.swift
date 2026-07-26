@@ -5,12 +5,20 @@ public struct AmbientOpsService: Equatable, Sendable {
   public let name: String
   public let endpoint: URL
   public let displayPath: String
+  public let supportsPairing: Bool
 
-  public init(instanceID: String, name: String, endpoint: URL, displayPath: String) {
+  public init(
+    instanceID: String,
+    name: String,
+    endpoint: URL,
+    displayPath: String,
+    supportsPairing: Bool = false
+  ) {
     self.instanceID = instanceID
     self.name = name
     self.endpoint = endpoint
     self.displayPath = displayPath
+    self.supportsPairing = supportsPairing
   }
 }
 
@@ -48,7 +56,8 @@ public enum AmbientOpsDiscoveryContract {
       instanceID: instanceID,
       name: String((txt["name"] ?? serviceName).prefix(80)),
       endpoint: endpoint,
-      displayPath: normalizedPath(txt["path"])
+      displayPath: normalizedPath(txt["path"]),
+      supportsPairing: txt["pairing"] == "1"
     )
   }
 

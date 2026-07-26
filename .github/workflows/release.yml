@@ -211,7 +211,7 @@ jobs:
 
           ## macOS
 
-          `Codex-TPS.dmg` is signed with Apple Developer ID, notarized, stapled, and checksum verified. This release adds Ambient Ops automatic discovery, aggregate telemetry, and host pet reporting.
+          `Codex-TPS.dmg` is signed with Apple Developer ID, notarized, stapled, and checksum verified. Codex TPS now automatically creates a per-device P-256 key in the macOS Keychain, opens the Ambient Ops approval page after LAN discovery, and starts signed aggregate pushes after the six-digit code is approved. Ambient Ops v0.1.4+ no longer requires Mac users to copy the shared push token.
           EOF
           gh release create "$GITHUB_REF_NAME" \
             release-assets/Codex-TPS.dmg \
