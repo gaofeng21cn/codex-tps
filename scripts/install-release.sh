@@ -211,6 +211,7 @@ validate_running_process_contract() {
 stop_running_app() {
   if [[ -n "$RUNNING_PID" ]]; then
     validate_running_process_contract
+    stop_process "$RUNNING_PID" "$RUNNING_APP"
     stop_processes_for_app "$RUNNING_APP"
     return
   fi
@@ -257,7 +258,7 @@ launch_app_and_wait() {
   local app_path="$1"
   local excluded_pid="${2:-}"
 
-  "$OPEN_COMMAND" -n "$app_path" >/dev/null 2>&1 || return 1
+  "$OPEN_COMMAND" "$app_path" >/dev/null 2>&1 || return 1
   wait_for_launch "$app_path" "$excluded_pid"
 }
 

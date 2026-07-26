@@ -15,6 +15,7 @@ TEST_ROOT="$(
   cd "$TEST_ROOT"
   /bin/pwd -P
 )"
+TEST_BIN="$TEST_ROOT/bin"
 TARGET_ROOT="$TEST_ROOT/target"
 TARGET_APP="$TARGET_ROOT/Codex TPS.app"
 OTHER_APP="$TEST_ROOT/other/Codex TPS.app"
@@ -150,6 +151,7 @@ start_stub_app() {
 }
 
 run_installer() {
+  local hidden_pid="${4:-}"
   local installer_environment=(
     "CODEX_TPS_DMG_URL=file://$DMG_PATH"
     "CODEX_TPS_CHECKSUM_URL=file://$CHECKSUM_PATH"
@@ -160,6 +162,12 @@ run_installer() {
     "CODEX_TPS_OPEN_COMMAND=${3:-/usr/bin/open}"
   )
 
+  if [[ -n "$hidden_pid" ]]; then
+    installer_environment+=(
+      "PATH=$TEST_BIN:$PATH"
+      "CODEX_TPS_TEST_HIDDEN_PID=$hidden_pid"
+    )
+  fi
   if [[ "$VERIFY_MODE" == "adhoc" ]]; then
     installer_environment+=("CODEX_TPS_UPDATER_TEST_ROOT=$TEST_ROOT")
   fi
@@ -193,7 +201,11 @@ cat >"$DIRECT_OPEN" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
-app_path="${@: -1}"
+if [[ "$#" -ne 1 ]]; then
+  echo "Updater launch must pass exactly one app path." >&2
+  exit 64
+fi
+app_path="$1"
 export CFFIXED_USER_HOME="$CODEX_TPS_TEST_HOME"
 export HOME="$CODEX_TPS_TEST_HOME"
 export CODEX_HOME="$CODEX_TPS_TEST_CODEX_HOME"
@@ -202,6 +214,19 @@ nohup /usr/bin/sandbox-exec \
   "$app_path/Contents/MacOS/CodexTPS" --preview-window >/dev/null 2>&1 &
 EOF
 chmod 755 "$DIRECT_OPEN"
+
+mkdir -p "$TEST_BIN"
+cat >"$TEST_BIN/pgrep" <<'EOF'
+#!/bin/bash
+set -euo pipefail
+
+while IFS= read -r pid; do
+  if [[ "$pid" != "${CODEX_TPS_TEST_HIDDEN_PID:-}" ]]; then
+    printf '%s\n' "$pid"
+  fi
+done < <(/usr/bin/pgrep "$@" 2>/dev/null || true)
+EOF
+chmod 755 "$TEST_BIN/pgrep"
 
 mkdir -p "$TARGET_ROOT"
 make_stub_app "$TARGET_APP" "original"
@@ -265,7 +290,7 @@ then
   exit 1
 fi
 
-run_installer "$OLD_PID" "$TARGET_APP" "$DIRECT_OPEN"
+run_installer "$OLD_PID" "$TARGET_APP" "$DIRECT_OPEN" "$OLD_PID"
 if ! wait_for_exit "$OLD_PID" || ! wait_for_exit "$SECOND_OLD_PID"; then
   echo "Updater verification left an old target process running." >&2
   exit 1
@@ -299,6 +324,10 @@ cat >"$FAKE_OPEN" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
+if [[ "$#" -ne 1 ]]; then
+  echo "Updater launch must pass exactly one app path." >&2
+  exit 64
+fi
 count=0
 if [[ -f "$CODEX_TPS_TEST_OPEN_STATE" ]]; then
   read -r count <"$CODEX_TPS_TEST_OPEN_STATE"
@@ -311,7 +340,7 @@ if [[ "$count" -eq 1 ]]; then
   exit 1
 fi
 
-app_path="${@: -1}"
+app_path="$1"
 nohup "$app_path/Contents/MacOS/CodexTPS" >/dev/null 2>&1 &
 EOF
 chmod 755 "$FAKE_OPEN"
@@ -357,7 +386,11 @@ cat >"$FAIL_ROLLBACK_OPEN" <<'EOF'
 #!/bin/bash
 set -euo pipefail
 
-app_path="${@: -1}"
+if [[ "$#" -ne 1 ]]; then
+  echo "Updater launch must pass exactly one app path." >&2
+  exit 64
+fi
+app_path="$1"
 /usr/bin/chflags -R uchg "$app_path"
 exit 1
 EOF
