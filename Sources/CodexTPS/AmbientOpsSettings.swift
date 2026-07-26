@@ -71,51 +71,18 @@ enum AmbientOpsPetChoice: String, CaseIterable, Identifiable {
   }
 }
 
-struct AmbientOpsKeychain {
-  static let service = "cn.gaofeng.ambient-ops.agent-push"
-  static let deviceKeyService = "cn.gaofeng.codex-tps.device-key"
+struct AmbientOpsKeychainRead {
+  let status: OSStatus
+  let data: Data?
+}
 
-  static func token(account: String = NSUserName()) -> String? {
-    guard let data = data(service: service, account: account) else { return nil }
-    guard
-      let token = String(data: data, encoding: .utf8)?
-        .trimmingCharacters(in: .whitespacesAndNewlines),
-      !token.isEmpty
-    else { return nil }
-    return token
-  }
+protocol AmbientOpsKeychainBackend {
+  func read(service: String, account: String) -> AmbientOpsKeychainRead
+  func add(service: String, account: String, data: Data) -> OSStatus
+}
 
-  static func deviceKey(account: String = NSUserName()) throws -> AmbientOpsDeviceKey {
-    if let saved = data(service: deviceKeyService, account: account) {
-      do {
-        return try AmbientOpsDeviceKey(rawRepresentation: saved)
-      } catch {
-        throw AmbientOpsKeychainError.invalidDeviceKey
-      }
-    }
-
-    let created = AmbientOpsDeviceKey()
-    let add: [CFString: Any] = [
-      kSecClass: kSecClassGenericPassword,
-      kSecAttrService: deviceKeyService,
-      kSecAttrAccount: account,
-      kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-      kSecValueData: created.rawRepresentation,
-    ]
-    let status = SecItemAdd(add as CFDictionary, nil)
-    if status == errSecSuccess {
-      return created
-    }
-    if status == errSecDuplicateItem,
-      let saved = data(service: deviceKeyService, account: account),
-      let existing = try? AmbientOpsDeviceKey(rawRepresentation: saved)
-    {
-      return existing
-    }
-    throw AmbientOpsKeychainError.unexpectedStatus(status)
-  }
-
-  private static func data(service: String, account: String) -> Data? {
+struct SystemAmbientOpsKeychainBackend: AmbientOpsKeychainBackend {
+  func read(service: String, account: String) -> AmbientOpsKeychainRead {
     let query: [CFString: Any] = [
       kSecClass: kSecClassGenericPassword,
       kSecAttrService: service,
@@ -124,25 +91,149 @@ struct AmbientOpsKeychain {
       kSecMatchLimit: kSecMatchLimitOne,
     ]
     var result: CFTypeRef?
-    guard
-      SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
-      let data = result as? Data
-    else { return nil }
-    return data
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    return AmbientOpsKeychainRead(status: status, data: result as? Data)
+  }
+
+  func add(service: String, account: String, data: Data) -> OSStatus {
+    let attributes: [CFString: Any] = [
+      kSecClass: kSecClassGenericPassword,
+      kSecAttrService: service,
+      kSecAttrAccount: account,
+      kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+      kSecValueData: data,
+    ]
+    return SecItemAdd(attributes as CFDictionary, nil)
   }
 }
 
-enum AmbientOpsKeychainError: LocalizedError {
+@MainActor
+final class AmbientOpsKeychain {
+  static let service = "cn.gaofeng.ambient-ops.agent-push"
+  static let deviceKeyService = "cn.gaofeng.codex-tps.device-key"
+
+  private let backend: any AmbientOpsKeychainBackend
+  private var cachedTokens: [String: String] = [:]
+  private var cachedDeviceKeys: [String: AmbientOpsDeviceKey] = [:]
+
+  init(backend: any AmbientOpsKeychainBackend = SystemAmbientOpsKeychainBackend()) {
+    self.backend = backend
+  }
+
+  func token(account: String = NSUserName()) throws -> String? {
+    if let cached = cachedTokens[account] {
+      return cached
+    }
+    guard let data = try data(service: Self.service, account: account) else { return nil }
+    guard
+      let token = String(data: data, encoding: .utf8)?
+        .trimmingCharacters(in: .whitespacesAndNewlines),
+      !token.isEmpty
+    else { throw AmbientOpsKeychainError.invalidToken }
+    cachedTokens[account] = token
+    return token
+  }
+
+  func deviceKey(account: String = NSUserName()) throws -> AmbientOpsDeviceKey {
+    if let cached = cachedDeviceKeys[account] {
+      return cached
+    }
+    if let saved = try data(service: Self.deviceKeyService, account: account) {
+      do {
+        let existing = try AmbientOpsDeviceKey(rawRepresentation: saved)
+        cachedDeviceKeys[account] = existing
+        return existing
+      } catch {
+        throw AmbientOpsKeychainError.invalidDeviceKey
+      }
+    }
+
+    let created = AmbientOpsDeviceKey()
+    let status = backend.add(
+      service: Self.deviceKeyService,
+      account: account,
+      data: created.rawRepresentation
+    )
+    if status == errSecSuccess {
+      cachedDeviceKeys[account] = created
+      return created
+    }
+    if status == errSecDuplicateItem {
+      guard let saved = try data(service: Self.deviceKeyService, account: account) else {
+        throw AmbientOpsKeychainError.writeFailed(
+          service: Self.deviceKeyService,
+          status: status
+        )
+      }
+      do {
+        let existing = try AmbientOpsDeviceKey(rawRepresentation: saved)
+        cachedDeviceKeys[account] = existing
+        return existing
+      } catch {
+        throw AmbientOpsKeychainError.invalidDeviceKey
+      }
+    }
+    throw AmbientOpsKeychainError.writeFailed(service: Self.deviceKeyService, status: status)
+  }
+
+  private func data(service: String, account: String) throws -> Data? {
+    let result = backend.read(service: service, account: account)
+    switch result.status {
+    case errSecSuccess:
+      guard let data = result.data else {
+        throw AmbientOpsKeychainError.invalidReadResult(service: service)
+      }
+      return data
+    case errSecItemNotFound:
+      return nil
+    default:
+      throw AmbientOpsKeychainError.readFailed(service: service, status: result.status)
+    }
+  }
+}
+
+enum AmbientOpsKeychainError: LocalizedError, Equatable {
+  case invalidToken
   case invalidDeviceKey
-  case unexpectedStatus(OSStatus)
+  case invalidReadResult(service: String)
+  case readFailed(service: String, status: OSStatus)
+  case writeFailed(service: String, status: OSStatus)
 
   var errorDescription: String? {
     switch self {
+    case .invalidToken:
+      return "Keychain 中的 Ambient Ops 令牌无效"
     case .invalidDeviceKey:
       return "Keychain 中的设备配对密钥无效"
-    case .unexpectedStatus(let status):
+    case .invalidReadResult:
+      return "Keychain 返回了无效的凭据数据"
+    case .readFailed(_, let status):
+      return "无法读取 Keychain 凭据（\(status)）；请解锁登录钥匙串后重试"
+    case .writeFailed(_, let status):
       return "无法将设备配对密钥存入 Keychain（\(status)）"
     }
+  }
+}
+
+enum AmbientOpsRetryBehavior: Equatable {
+  case retryCurrentEndpoint
+  case rediscover
+
+  static func behavior(for error: Error, autoDiscover: Bool) -> Self {
+    if error is AmbientOpsKeychainError || !autoDiscover {
+      return .retryCurrentEndpoint
+    }
+    return .rediscover
+  }
+}
+
+enum AmbientOpsRetryPolicy {
+  private static let initialDelay: TimeInterval = 15
+  private static let maximumDelay: TimeInterval = 300
+
+  static func delay(forFailureCount failureCount: Int) -> TimeInterval {
+    let exponent = min(max(failureCount - 1, 0), 5)
+    return min(initialDelay * pow(2, Double(exponent)), maximumDelay)
   }
 }
 
