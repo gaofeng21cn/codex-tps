@@ -241,13 +241,18 @@ internal sealed class TaskbarReadoutForm : Form
                 return false;
             }
 
+            var dpi = GetWindowDpi(taskbar);
             Rectangle? notificationBounds = null;
             var notification = FindWindowEx(taskbar, IntPtr.Zero, "TrayNotifyWnd", null);
             if (notification != IntPtr.Zero &&
                 IsWindowVisible(notification) &&
                 GetWindowRect(notification, out var notificationRectangle))
             {
-                notificationBounds = notificationRectangle.ToRectangle();
+                notificationBounds = TaskbarPlacement.IncludeAdjacentTaskbarContent(
+                    taskbarRectangle.ToRectangle(),
+                    notificationRectangle.ToRectangle(),
+                    ChildWindowBounds(taskbar),
+                    dpi);
             }
 
             var appBarData = new AppBarData
@@ -260,9 +265,24 @@ internal sealed class TaskbarReadoutForm : Form
                 taskbarRectangle.ToRectangle(),
                 monitorInfo.Monitor.ToRectangle(),
                 notificationBounds,
-                GetWindowDpi(taskbar),
+                dpi,
                 AutoHide: (appBarState & AbsAutoHide) != 0);
             return true;
+        }
+
+        private static IReadOnlyList<Rectangle> ChildWindowBounds(IntPtr parent)
+        {
+            var bounds = new List<Rectangle>();
+            EnumChildWindows(parent, (window, _) =>
+            {
+                if (IsWindowVisible(window) &&
+                    GetWindowRect(window, out var rectangle))
+                {
+                    bounds.Add(rectangle.ToRectangle());
+                }
+                return true;
+            }, IntPtr.Zero);
+            return bounds;
         }
 
         private static int GetWindowDpi(IntPtr window)
@@ -297,6 +317,13 @@ internal sealed class TaskbarReadoutForm : Form
         private static extern bool IsWindowVisible(IntPtr window);
 
         [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumChildWindows(
+            IntPtr parent,
+            EnumWindowCallback callback,
+            IntPtr parameter);
+
+        [DllImport("user32.dll")]
         private static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -308,6 +335,8 @@ internal sealed class TaskbarReadoutForm : Form
 
         [DllImport("shell32.dll")]
         private static extern uint SHAppBarMessage(uint message, ref AppBarData data);
+
+        private delegate bool EnumWindowCallback(IntPtr window, IntPtr parameter);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeRectangle

@@ -113,4 +113,48 @@ public sealed class TaskbarPlacementTests
 
         Assert.False(placement.IsVisible);
     }
+
+    [Fact]
+    public void AdjacentThirdPartyTaskbarContentExtendsNotificationArea()
+    {
+        var taskbar = new Rectangle(0, 1032, 1920, 48);
+        var notification = new Rectangle(1610, 1032, 310, 48);
+        var trafficMonitor = new Rectangle(1518, 1040, 94, 32);
+        var unrelatedWidget = new Rectangle(1420, 1040, 98, 32);
+        var taskList = new Rectangle(583, 1032, 577, 48);
+        var fullTaskbarSurface = taskbar;
+
+        var occupied = TaskbarPlacement.IncludeAdjacentTaskbarContent(
+            taskbar,
+            notification,
+            [trafficMonitor, unrelatedWidget, taskList, fullTaskbarSurface],
+            dpi: 96);
+        var placement = TaskbarPlacement.Calculate(new TaskbarGeometry(
+            taskbar,
+            new Rectangle(0, 0, 1920, 1080),
+            occupied,
+            Dpi: 96,
+            AutoHide: false));
+
+        Assert.Equal(new Rectangle(1518, 1032, 402, 48), occupied);
+        Assert.True(placement.IsVisible);
+        Assert.Equal(new Rectangle(1400, 1042, 112, 28), placement.Bounds);
+        Assert.False(placement.Bounds.IntersectsWith(trafficMonitor));
+    }
+
+    [Fact]
+    public void AdjacentTaskbarContentToleranceScalesWithDpi()
+    {
+        var taskbar = new Rectangle(0, 2016, 3840, 144);
+        var notification = new Rectangle(3200, 2016, 640, 144);
+        var trafficMonitor = new Rectangle(3000, 2036, 185, 64);
+
+        var occupied = TaskbarPlacement.IncludeAdjacentTaskbarContent(
+            taskbar,
+            notification,
+            [trafficMonitor],
+            dpi: 192);
+
+        Assert.Equal(new Rectangle(3000, 2016, 840, 144), occupied);
+    }
 }

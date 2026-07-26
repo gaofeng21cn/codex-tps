@@ -64,6 +64,51 @@ internal readonly record struct TaskbarPlacement(
             : CalculateVertical(geometry, visibleTaskbar, edge);
     }
 
+    internal static Rectangle IncludeAdjacentTaskbarContent(
+        Rectangle taskbar,
+        Rectangle notification,
+        IEnumerable<Rectangle> candidates,
+        int dpi)
+    {
+        var horizontal = taskbar.Width >= taskbar.Height;
+        var occupied = Rectangle.Intersect(taskbar, notification);
+        if (occupied.IsEmpty)
+        {
+            return notification;
+        }
+        var notificationAnchor = occupied;
+        var adjacencyTolerance = Scale(8, dpi);
+
+        foreach (var candidate in candidates)
+        {
+            var bounded = Rectangle.Intersect(taskbar, candidate);
+            if (bounded.IsEmpty)
+            {
+                continue;
+            }
+
+            var consumesMostTaskbar = horizontal
+                ? bounded.Width >= taskbar.Width / 2
+                : bounded.Height >= taskbar.Height / 2;
+            if (consumesMostTaskbar)
+            {
+                continue;
+            }
+
+            var isAdjacent = horizontal
+                ? bounded.Left < notificationAnchor.Left &&
+                    bounded.Right >= notificationAnchor.Left - adjacencyTolerance
+                : bounded.Top < notificationAnchor.Top &&
+                    bounded.Bottom >= notificationAnchor.Top - adjacencyTolerance;
+            if (isAdjacent)
+            {
+                occupied = Rectangle.Union(occupied, bounded);
+            }
+        }
+
+        return occupied;
+    }
+
     private static TaskbarPlacement CalculateHorizontal(
         TaskbarGeometry geometry,
         Rectangle taskbar,
