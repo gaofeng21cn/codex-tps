@@ -1,4 +1,5 @@
 using CodexTPS.Core;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 
 namespace CodexTPS.WindowsApp;
@@ -21,6 +22,7 @@ internal sealed class SettingsForm : RoundedPopupForm
     private readonly TextBox manualUrl = TextInput();
     private readonly TextBox token = TextInput(password: true);
     private readonly Button pasteToken = IconButton("\uE77F", "从剪贴板粘贴令牌并连接");
+    private readonly Button? openPairing;
     private readonly TextBox preferredInstance = TextInput();
     private readonly TextBox machineId = TextInput();
     private readonly TextBox machineName = TextInput();
@@ -32,6 +34,7 @@ internal sealed class SettingsForm : RoundedPopupForm
     private readonly Label manualUrlLabel;
     private readonly int manualUrlRowIndex;
     private readonly int refreshSeconds;
+    private readonly string devicePrivateKey;
 
     public SettingsForm(AppSettings settings, AmbientOpsConnectionStatus connection)
     {
@@ -42,6 +45,7 @@ internal sealed class SettingsForm : RoundedPopupForm
         ClientSize = new Size(520, 620);
         StartPosition = FormStartPosition.CenterParent;
         refreshSeconds = settings.RefreshSeconds;
+        devicePrivateKey = settings.DevicePrivateKey;
 
         var executableIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (executableIcon is not null)
@@ -57,7 +61,7 @@ internal sealed class SettingsForm : RoundedPopupForm
         manualUrl.Text = settings.ManualUrl;
         manualUrl.PlaceholderText = "http://ambient-ops.local:8787";
         token.Text = settings.Token;
-        token.PlaceholderText = "Ambient Ops agent_push_token";
+        token.PlaceholderText = "仅旧版 Ambient Ops 需要";
         preferredInstance.Text = settings.PreferredInstanceId;
         preferredInstance.PlaceholderText = "可选";
         machineId.Text = settings.MachineId;
@@ -110,6 +114,12 @@ internal sealed class SettingsForm : RoundedPopupForm
         AddToggle("发送聚合指标", ambientEnabled);
         AddToggle("自动发现", autoDiscover);
         AddConnection(connection);
+        if (connection.ApprovalUri is not null)
+        {
+            openPairing = CommandButton("打开批准页", primary: true);
+            openPairing.Click += (_, _) => OpenPairingPage(connection.ApprovalUri);
+            AddField("安全配对", openPairing);
+        }
 
         manualUrlRow.Dock = DockStyle.Fill;
         manualUrlRow.BackColor = Background;
@@ -130,7 +140,7 @@ internal sealed class SettingsForm : RoundedPopupForm
         toolTip.SetToolTip(pasteToken, "粘贴剪贴板中的令牌并立即连接");
         tokenPanel.Controls.Add(token, 0, 0);
         tokenPanel.Controls.Add(pasteToken, 1, 0);
-        AddField("推送令牌", tokenPanel);
+        AddField("兼容令牌", tokenPanel);
         AddField("首选实例", preferredInstance);
         AddSeparator();
 
@@ -149,7 +159,7 @@ internal sealed class SettingsForm : RoundedPopupForm
             ForeColor = Secondary,
             BackColor = Background,
             Font = new Font("Microsoft YaHei UI", 8.5f),
-            Text = "推送令牌来自 NAS 部署目录 secrets/agent_push_token。保存后使用 Windows DPAPI 加密，仅发送聚合指标、宠物元数据和本机 WebP 图集。",
+            Text = "首次连接会自动打开 Ambient Ops 批准页，无需复制 NAS 密钥。本机私钥由 Windows DPAPI 加密；仅发送聚合指标、宠物元数据和本机 WebP 图集。",
             Margin = new Padding(0, 10, 0, 18),
         });
 
@@ -294,7 +304,8 @@ internal sealed class SettingsForm : RoundedPopupForm
         {
             AmbientOpsConnectionKind.Live => Success,
             AmbientOpsConnectionKind.Discovering or AmbientOpsConnectionKind.Ready or
-                AmbientOpsConnectionKind.NeedsToken or AmbientOpsConnectionKind.Pushing => Warning,
+                AmbientOpsConnectionKind.NeedsToken or AmbientOpsConnectionKind.Pairing or
+                AmbientOpsConnectionKind.Pushing => Warning,
             AmbientOpsConnectionKind.Disabled => Secondary,
             _ => Failure,
         };
@@ -367,6 +378,7 @@ internal sealed class SettingsForm : RoundedPopupForm
                 AutoDiscover = autoDiscover.Checked,
                 ManualUrl = manualUrl.Text.Trim(),
                 Token = token.Text,
+                DevicePrivateKey = devicePrivateKey,
                 PreferredInstanceId = preferredInstance.Text.Trim(),
                 MachineId = machineId.Text.Trim(),
                 MachineName = machineName.Text.Trim(),
@@ -420,6 +432,14 @@ internal sealed class SettingsForm : RoundedPopupForm
         }
     }
 
+    private static void OpenPairingPage(Uri uri)
+    {
+        Process.Start(new ProcessStartInfo(uri.AbsoluteUri)
+        {
+            UseShellExecute = true,
+        });
+    }
+
     private void BrowseCodexHome()
     {
         using var dialog = new FolderBrowserDialog
@@ -452,6 +472,10 @@ internal sealed class SettingsForm : RoundedPopupForm
         autoDiscover.Enabled = ambientEnabled.Checked;
         token.Enabled = ambientEnabled.Checked;
         pasteToken.Enabled = ambientEnabled.Checked;
+        if (openPairing is not null)
+        {
+            openPairing.Enabled = ambientEnabled.Checked;
+        }
         preferredInstance.Enabled = ambientEnabled.Checked;
         petEnabled.Enabled = ambientEnabled.Checked;
         UpdateManualUrlVisibility();

@@ -19,10 +19,17 @@ internal sealed class TrayApplicationContext : ApplicationContext
         DateTimeOffset.Now,
         CollectionStatus.SessionsDirectoryMissing);
     private bool refreshing;
+    private string? openedPairingUri;
 
     public TrayApplicationContext(bool showDashboard)
     {
         settings = settingsStore.Load();
+        if (settings.AmbientEnabled &&
+            settingsStore.LastError is null &&
+            settingsStore.EnsureDeviceKey(settings))
+        {
+            settingsStore.Save(settings);
+        }
         try
         {
             settings.StartWithWindows = StartupRegistration.IsEnabled();
@@ -116,6 +123,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 forcePush,
                 cancellation.Token);
             dashboard.UpdateSnapshot(lastSnapshot, ambientOps.Connection);
+            OpenPairingApprovalIfNeeded(ambientOps.Connection);
             UpdateTrayRateIcon(lastSnapshot);
             trayIcon.Text = lastSnapshot.Status == CollectionStatus.Ready
                 ? $"Codex TPS · {Compact(lastSnapshot.OneMinute.TokensPerSecond)} t/s"
@@ -167,6 +175,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             var previousStartup = StartupRegistration.IsEnabled();
             try
             {
+                if (next.AmbientEnabled)
+                {
+                    settingsStore.EnsureDeviceKey(next);
+                }
                 StartupRegistration.SetEnabled(next.StartWithWindows);
                 settingsStore.Save(next);
             }
@@ -215,6 +227,27 @@ internal sealed class TrayApplicationContext : ApplicationContext
         >= 1_000 => $"{value / 1_000:0.0}K",
         _ => $"{value:0.0}",
     };
+
+    private void OpenPairingApprovalIfNeeded(AmbientOpsConnectionStatus connection)
+    {
+        if (connection.ApprovalUri is null ||
+            connection.ApprovalUri.AbsoluteUri == openedPairingUri)
+        {
+            return;
+        }
+        openedPairingUri = connection.ApprovalUri.AbsoluteUri;
+        try
+        {
+            Process.Start(new ProcessStartInfo(openedPairingUri)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception error)
+        {
+            ShowError("无法打开 Ambient Ops 批准页", error);
+        }
+    }
 
     private void SetRefreshCadence(int seconds)
     {
