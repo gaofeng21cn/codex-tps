@@ -188,7 +188,7 @@ mkdir -p "$ISOLATED_HOME/Library/Preferences" "$ISOLATED_CODEX_HOME/sessions"
 export CODEX_TPS_TEST_HOME="$ISOLATED_HOME"
 export CODEX_TPS_TEST_CODEX_HOME="$ISOLATED_CODEX_HOME"
 
-# Launch directly without network access so the test cannot push real metrics.
+# Launch directly without network or preference writes so the test stays isolated.
 cat >"$DIRECT_OPEN" <<'EOF'
 #!/bin/bash
 set -euo pipefail
@@ -198,7 +198,7 @@ export CFFIXED_USER_HOME="$CODEX_TPS_TEST_HOME"
 export HOME="$CODEX_TPS_TEST_HOME"
 export CODEX_HOME="$CODEX_TPS_TEST_CODEX_HOME"
 nohup /usr/bin/sandbox-exec \
-  -p '(version 1)(allow default)(deny network*)' \
+  -p '(version 1)(allow default)(deny network*)(deny file-write*)(deny mach-lookup (global-name "com.apple.cfprefsd.agent"))(deny mach-lookup (global-name "com.apple.cfprefsd.xpc.agent"))(deny mach-lookup (global-name "com.apple.cfprefsd.daemon"))' \
   "$app_path/Contents/MacOS/CodexTPS" --preview-window >/dev/null 2>&1 &
 EOF
 chmod 755 "$DIRECT_OPEN"
