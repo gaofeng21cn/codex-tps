@@ -1,6 +1,23 @@
 using CodexTPS.Core;
+using System.Net;
 
 namespace CodexTPS.WindowsApp;
+
+internal enum AmbientOpsConnectionKind
+{
+    Disabled,
+    Discovering,
+    Ready,
+    NeedsToken,
+    Pushing,
+    Live,
+    Failed,
+}
+
+internal sealed record AmbientOpsConnectionStatus(
+    AmbientOpsConnectionKind Kind,
+    string Message,
+    Uri? Endpoint = null);
 
 internal sealed class AmbientOpsCoordinator
 {
@@ -15,7 +32,9 @@ internal sealed class AmbientOpsCoordinator
     private DateTimeOffset? lastPush;
     private string configurationKey = string.Empty;
 
-    public string Status { get; private set; } = "Not connected";
+    public AmbientOpsConnectionStatus Connection { get; private set; } = new(
+        AmbientOpsConnectionKind.Discovering,
+        "正在连接");
 
     public async Task PushIfDueAsync(
         UsageSnapshot usage,
@@ -25,12 +44,50 @@ internal sealed class AmbientOpsCoordinator
     {
         if (!settings.AmbientEnabled)
         {
-            Status = "Disabled";
+            SetStatus(AmbientOpsConnectionKind.Disabled, "未启用");
             return;
         }
+
+        ResetIfConfigurationChanged(settings);
+        Uri endpoint;
+        string destination;
+
+        if (!settings.AutoDiscover)
+        {
+            if (!Uri.TryCreate(settings.ManualUrl, UriKind.Absolute, out var manualEndpoint) ||
+                manualEndpoint.Scheme is not ("http" or "https"))
+            {
+                SetStatus(AmbientOpsConnectionKind.Failed, "请输入有效的 HTTP(S) 地址");
+                return;
+            }
+            endpoint = manualEndpoint;
+            destination = endpoint.Host;
+        }
+        else
+        {
+            if (discoveredServices.Count == 0)
+            {
+                SetStatus(AmbientOpsConnectionKind.Discovering, "正在自动发现");
+                discoveredServices = await discovery.DiscoverAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                selector!.ResetFailures();
+            }
+            selectedService ??= selector!.Select(discoveredServices);
+            if (selectedService is null)
+            {
+                SetStatus(AmbientOpsConnectionKind.Failed, "未发现兼容的 Ambient Ops");
+                return;
+            }
+            endpoint = selectedService.Endpoint;
+            destination = selectedService.Name;
+        }
+
         if (string.IsNullOrWhiteSpace(settings.Token))
         {
-            Status = "Push token required";
+            SetStatus(
+                AmbientOpsConnectionKind.NeedsToken,
+                $"已发现 {destination} · 需要推送令牌",
+                endpoint);
             return;
         }
         if (!force && lastPush is { } pushedAt && DateTimeOffset.Now - pushedAt < PushInterval)
@@ -38,7 +95,6 @@ internal sealed class AmbientOpsCoordinator
             return;
         }
 
-        ResetIfConfigurationChanged(settings);
         var identity = new AmbientOpsMachineIdentity(
             settings.MachineId,
             settings.MachineName,
@@ -52,65 +108,72 @@ internal sealed class AmbientOpsCoordinator
             lastSuccessfulSnapshot,
             pet);
 
-        if (!settings.AutoDiscover)
-        {
-            if (!Uri.TryCreate(settings.ManualUrl, UriKind.Absolute, out var endpoint) ||
-                endpoint.Scheme is not ("http" or "https"))
-            {
-                Status = "Valid HTTP(S) URL required";
-                return;
-            }
-            await PushAsync(endpoint, payload, identity, settings.Token, cancellationToken)
-                .ConfigureAwait(false);
-            RecordSuccess(usage, payload, endpoint.Host);
-            return;
-        }
-
-        if (discoveredServices.Count == 0)
-        {
-            Status = "Discovering Ambient Ops";
-            discoveredServices = await discovery.DiscoverAsync(cancellationToken)
-                .ConfigureAwait(false);
-            selector!.ResetFailures();
-        }
-        selectedService ??= selector!.Select(discoveredServices);
-        if (selectedService is null)
-        {
-            Status = "No compatible Ambient Ops service";
-            return;
-        }
-
         try
         {
             await PushAsync(
-                selectedService.Endpoint,
+                endpoint,
                 payload,
                 identity,
                 settings.Token,
                 cancellationToken).ConfigureAwait(false);
         }
+        catch (HttpRequestException error) when (
+            error.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            SetStatus(
+                AmbientOpsConnectionKind.Failed,
+                $"推送被拒绝 · HTTP {(int)error.StatusCode.Value}",
+                endpoint);
+            return;
+        }
         catch (Exception error) when (
+            settings.AutoDiscover &&
             !cancellationToken.IsCancellationRequested &&
             error is HttpRequestException or TaskCanceledException)
         {
-            selector!.RecordPushFailure(selectedService);
+            selector!.RecordPushFailure(selectedService!);
             var fallback = selector.Select(discoveredServices);
             if (fallback is null)
             {
                 discoveredServices = [];
                 selectedService = null;
-                Status = $"Push failed: {error.Message}";
+                SetStatus(AmbientOpsConnectionKind.Failed, $"推送失败 · {error.Message}");
                 return;
             }
             selectedService = fallback;
-            await PushAsync(
-                fallback.Endpoint,
-                payload,
-                identity,
-                settings.Token,
-                cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await PushAsync(
+                    fallback.Endpoint,
+                    payload,
+                    identity,
+                    settings.Token,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception fallbackError) when (
+                !cancellationToken.IsCancellationRequested &&
+                fallbackError is HttpRequestException or TaskCanceledException)
+            {
+                SetStatus(
+                    AmbientOpsConnectionKind.Failed,
+                    $"推送失败 · {fallbackError.Message}",
+                    fallback.Endpoint);
+                return;
+            }
+            endpoint = fallback.Endpoint;
+            destination = fallback.Name;
         }
-        RecordSuccess(usage, payload, selectedService.Name);
+        catch (Exception error) when (
+            !cancellationToken.IsCancellationRequested &&
+            error is HttpRequestException or TaskCanceledException)
+        {
+            SetStatus(
+                AmbientOpsConnectionKind.Failed,
+                $"推送失败 · {error.Message}",
+                endpoint);
+            return;
+        }
+        RecordSuccess(usage, payload, destination, endpoint);
     }
 
     private async Task PushAsync(
@@ -120,7 +183,7 @@ internal sealed class AmbientOpsCoordinator
         string token,
         CancellationToken cancellationToken)
     {
-        Status = $"Pushing to {endpoint.Host}";
+        SetStatus(AmbientOpsConnectionKind.Pushing, $"正在推送到 {endpoint.Host}", endpoint);
         await pushClient.PushAsync(endpoint, token, identity, payload, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -128,14 +191,15 @@ internal sealed class AmbientOpsCoordinator
     private void RecordSuccess(
         UsageSnapshot usage,
         AmbientOpsAgentSnapshot payload,
-        string destination)
+        string destination,
+        Uri endpoint)
     {
         if (usage.Status == CollectionStatus.Ready)
         {
             lastSuccessfulSnapshot = payload;
         }
         lastPush = DateTimeOffset.Now;
-        Status = $"Live · {destination}";
+        SetStatus(AmbientOpsConnectionKind.Live, $"{destination} · 已连接", endpoint);
     }
 
     private void ResetIfConfigurationChanged(AppSettings settings)
@@ -154,4 +218,7 @@ internal sealed class AmbientOpsCoordinator
         discoveredServices = [];
         selectedService = null;
     }
+
+    private void SetStatus(AmbientOpsConnectionKind kind, string message, Uri? endpoint = null) =>
+        Connection = new AmbientOpsConnectionStatus(kind, message, endpoint);
 }

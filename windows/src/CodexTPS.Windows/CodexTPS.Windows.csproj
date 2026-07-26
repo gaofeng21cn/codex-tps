@@ -9,7 +9,7 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AssemblyName>CodexTPS</AssemblyName>
     <RootNamespace>CodexTPS.WindowsApp</RootNamespace>
-    <Version>0.2.5</Version>
+    <Version>0.2.6</Version>
     <ApplicationIcon>app.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
@@ -18,5 +18,9 @@
     <ProjectReference Include="..\CodexTPS.Core\CodexTPS.Core.csproj" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="Zeroconf" Version="3.7.16" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\..\Resources\AppIcon.png"
+                      LogicalName="CodexTPS.AppIcon.png" />
   </ItemGroup>
 </Project>

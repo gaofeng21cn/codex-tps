@@ -17,6 +17,7 @@ internal sealed class AppSettings
     public string MachineName { get; set; } = Environment.MachineName;
     public bool PetEnabled { get; set; } = true;
     public bool StartWithWindows { get; set; }
+    public int RefreshSeconds { get; set; } = 5;
     public string ProtectedToken { get; set; } = string.Empty;
 
     [JsonIgnore]
@@ -64,6 +65,10 @@ internal sealed class AppSettingsStore
             var settings = JsonSerializer.Deserialize<AppSettings>(
                 File.ReadAllText(SettingsPath),
                 Options) ?? new AppSettings();
+            if (settings.RefreshSeconds is not (5 or 15 or 30 or 60))
+            {
+                settings.RefreshSeconds = 5;
+            }
             settings.Token = Unprotect(settings.ProtectedToken);
             return settings;
         }

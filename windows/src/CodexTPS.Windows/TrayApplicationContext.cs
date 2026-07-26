@@ -1,4 +1,5 @@
 using CodexTPS.Core;
+using System.Diagnostics;
 
 namespace CodexTPS.WindowsApp;
 
@@ -33,11 +34,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         dashboard = CreateDashboard(scanner.SessionsRoot);
 
         var menu = new ContextMenuStrip();
-        menu.Items.Add("Open", null, (_, _) => dashboard.ShowFromTray());
-        menu.Items.Add("Refresh", null, async (_, _) => await RefreshAsync(forcePush: true));
-        menu.Items.Add("Settings", null, (_, _) => ShowSettings());
+        menu.Items.Add("打开", null, (_, _) => dashboard.ShowFromTray());
+        menu.Items.Add("刷新", null, async (_, _) => await RefreshAsync(forcePush: true));
+        menu.Items.Add("设置", null, (_, _) => ShowSettings());
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit", null, (_, _) => ExitThread());
+        menu.Items.Add("退出", null, (_, _) => ExitThread());
         applicationIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath)
             ?? (Icon)SystemIcons.Application.Clone();
         trayIcon = new NotifyIcon
@@ -47,11 +48,23 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Visible = true,
             ContextMenuStrip = menu,
         };
+        trayIcon.MouseClick += (_, eventArgs) =>
+        {
+            if (eventArgs.Button == MouseButtons.Left)
+            {
+                dashboard.ShowFromTray();
+            }
+        };
         trayIcon.DoubleClick += (_, _) => dashboard.ShowFromTray();
 
-        refreshTimer = new System.Windows.Forms.Timer { Interval = 5_000 };
+        refreshTimer = new System.Windows.Forms.Timer
+        {
+            Interval = settings.RefreshSeconds * 1_000,
+        };
         refreshTimer.Tick += async (_, _) => await RefreshAsync(forcePush: false);
         refreshTimer.Start();
+        dashboard.SetRefreshCadence(settings.RefreshSeconds);
+        dashboard.SetStartupEnabled(settings.StartWithWindows);
         if (showDashboard)
         {
             dashboard.ShowFromTray();
@@ -77,6 +90,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var form = new DashboardForm(sessionsRoot);
         form.SettingsRequested += (_, _) => ShowSettings();
         form.RefreshRequested += async (_, _) => await RefreshAsync(forcePush: true);
+        form.SessionsFolderRequested += (_, _) => OpenSessionsDirectory();
+        form.ExitRequested += (_, _) => ExitThread();
+        form.RefreshCadenceChanged += SetRefreshCadence;
+        form.StartupChanged += SetStartupEnabled;
         return form;
     }
 
@@ -95,7 +112,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 settings,
                 forcePush,
                 cancellation.Token);
-            dashboard.UpdateSnapshot(lastSnapshot, ambientOps.Status);
+            dashboard.UpdateSnapshot(lastSnapshot, ambientOps.Connection);
             trayIcon.Text = lastSnapshot.Status == CollectionStatus.Ready
                 ? $"Codex TPS · {Compact(lastSnapshot.OneMinute.TokensPerSecond)} t/s"
                 : "Codex TPS · sessions unavailable";
@@ -106,7 +123,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
         catch (Exception error)
         {
-            dashboard.UpdateSnapshot(lastSnapshot, $"Error · {error.Message}");
+            dashboard.UpdateSnapshot(
+                lastSnapshot,
+                new AmbientOpsConnectionStatus(
+                    AmbientOpsConnectionKind.Failed,
+                    $"错误 · {error.Message}"));
         }
         finally
         {
@@ -116,7 +137,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private void ShowSettings()
     {
-        using var form = new SettingsForm(settings);
+        using var form = new SettingsForm(settings, ambientOps.Connection);
         if (form.ShowDialog(dashboard) != DialogResult.OK || form.ResultSettings is not { } next)
         {
             return;
@@ -137,6 +158,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             settings = next;
             scanner = CreateScanner(settings);
             dashboard.UpdateSessionsRoot(scanner.SessionsRoot);
+            refreshTimer.Interval = settings.RefreshSeconds * 1_000;
+            dashboard.SetRefreshCadence(settings.RefreshSeconds);
+            dashboard.SetStartupEnabled(settings.StartWithWindows);
             _ = RefreshAsync(forcePush: true);
         }
         catch (Exception error)
@@ -171,4 +195,67 @@ internal sealed class TrayApplicationContext : ApplicationContext
         >= 1_000 => $"{value / 1_000:0.0}K",
         _ => $"{value:0.0}",
     };
+
+    private void SetRefreshCadence(int seconds)
+    {
+        if (seconds is not (5 or 15 or 30 or 60))
+        {
+            return;
+        }
+        var previous = settings.RefreshSeconds;
+        try
+        {
+            settings.RefreshSeconds = seconds;
+            settingsStore.Save(settings);
+            refreshTimer.Interval = seconds * 1_000;
+        }
+        catch (Exception error)
+        {
+            settings.RefreshSeconds = previous;
+            dashboard.SetRefreshCadence(previous);
+            ShowError("刷新间隔无法保存", error);
+        }
+    }
+
+    private void SetStartupEnabled(bool enabled)
+    {
+        var previous = settings.StartWithWindows;
+        try
+        {
+            StartupRegistration.SetEnabled(enabled);
+            settings.StartWithWindows = enabled;
+            settingsStore.Save(settings);
+            dashboard.SetStartupEnabled(enabled);
+        }
+        catch (Exception error)
+        {
+            StartupRegistration.SetEnabled(previous);
+            settings.StartWithWindows = previous;
+            dashboard.SetStartupEnabled(previous);
+            ShowError("登录启动无法更新", error);
+        }
+    }
+
+    private void OpenSessionsDirectory()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = scanner.SessionsRoot,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception error)
+        {
+            ShowError("会话目录无法打开", error);
+        }
+    }
+
+    private void ShowError(string title, Exception error) => MessageBox.Show(
+        dashboard,
+        error.Message,
+        title,
+        MessageBoxButtons.OK,
+        MessageBoxIcon.Error);
 }

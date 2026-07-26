@@ -302,7 +302,10 @@ public sealed class AmbientOpsPushClient
             .ConfigureAwait(false);
         if ((int)response.StatusCode != 202)
         {
-            throw new HttpRequestException($"Ambient Ops returned HTTP {(int)response.StatusCode}.");
+            throw new HttpRequestException(
+                $"Ambient Ops returned HTTP {(int)response.StatusCode}.",
+                inner: null,
+                response.StatusCode);
         }
     }
 }
