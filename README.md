@@ -166,7 +166,7 @@ CODEX_HOME=/path/to/codex-home swift run codex-tps-snapshot --json
 The menu bar app can discover `_ambient-ops._tcp.local` automatically. Its
 collapsed Ambient Ops settings let you disable integration, switch to a manual
 HTTP(S) URL, rediscover the server, and choose the pet reported for this Mac.
-With Ambient Ops v0.1.4 or newer, Codex TPS v0.2.10 automatically creates a
+With Ambient Ops v0.1.4 or newer, Codex TPS v0.2.11 automatically creates a
 per-device P-256 key in the macOS Keychain, opens the local approval page, and
 starts signed pushes after the user verifies the six-digit code. The private
 key never leaves the Mac, and no shared push token needs to be copied. An
@@ -317,7 +317,7 @@ cd codex-tps
 
 菜单栏 App 可以自动发现 `_ambient-ops._tcp.local`。折叠设置中可以关闭集成、
 改用手动 HTTP(S) 地址、重新发现服务端，以及选择本机上报的宠物。Codex TPS
-`v0.2.10+` 与 Ambient Ops `v0.1.4+` 会自动在 macOS Keychain 生成每台设备
+`v0.2.11+` 与 Ambient Ops `v0.1.4+` 会自动在 macOS Keychain 生成每台设备
 独立的 P-256 私钥，自动打开局域网批准页；核对六位配对码并批准后即可开始签名
 推送，不需要复制共享令牌。私钥不会离开本机。已有
 `cn.gaofeng.ambient-ops.agent-push` 令牌仍作为旧部署的兼容路径。
