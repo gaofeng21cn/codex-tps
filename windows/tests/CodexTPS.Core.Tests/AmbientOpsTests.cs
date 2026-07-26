@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 using CodexTPS.Core;
 
@@ -34,6 +35,16 @@ public sealed class AmbientOpsTests
         selector.RecordPushFailure(preferred!);
         Assert.Equal(other, selector.Select([preferred!, other!]));
         Assert.Equal("/display/pet", preferred!.DisplayPath);
+        Assert.False(preferred.SupportsPairing);
+        Assert.True(AmbientOpsDiscoveryContract.CreateService(
+            "Pairing",
+            "pairing.local",
+            8791,
+            new Dictionary<string, string>
+            {
+                ["protocol"] = "1",
+                ["pairing"] = "1",
+            })!.SupportsPairing);
         Assert.Null(AmbientOpsDiscoveryContract.CreateService(
             "Future",
             "future.local",
@@ -179,6 +190,88 @@ public sealed class AmbientOpsTests
         }
     }
 
+    [Fact]
+    public async Task BuildsPairingAndSignedRequestsWithoutASharedToken()
+    {
+        using var deviceKey = AmbientOpsDeviceKey.Create();
+        var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");
+        var pairing = new AmbientOpsPairingClient().CreatePairingRequest(
+            new Uri("http://ambient-ops.local:8787"),
+            identity,
+            deviceKey);
+        var pairingBody = await pairing.Content!.ReadAsStringAsync();
+
+        Assert.Null(pairing.Headers.Authorization);
+        Assert.Contains("\"publicKey\":", pairingBody, StringComparison.Ordinal);
+        Assert.DoesNotContain("private", pairingBody, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("token", pairingBody, StringComparison.OrdinalIgnoreCase);
+        Assert.Matches("^[0-9]{6}$", deviceKey.VerificationCode);
+
+        var snapshot = AmbientOpsAgentSnapshot.FromUsage(Usage(), identity);
+        var signed = new AmbientOpsPushClient().CreateSignedRequest(
+            new Uri("http://ambient-ops.local:8787"),
+            deviceKey,
+            identity,
+            snapshot,
+            DateTimeOffset.FromUnixTimeSeconds(1_000),
+            "abcdefghijklmnop");
+        var signedBody = await signed.Content!.ReadAsByteArrayAsync();
+
+        Assert.Equal("AmbientKey", signed.Headers.Authorization!.Scheme);
+        Assert.Equal("windows-pc", signed.Headers.Authorization.Parameter);
+        Assert.Equal("1000", signed.Headers.GetValues("X-Ambient-Timestamp").Single());
+        Assert.Equal("abcdefghijklmnop", signed.Headers.GetValues("X-Ambient-Nonce").Single());
+        Assert.NotEmpty(signed.Headers.GetValues("X-Ambient-Signature").Single());
+        Assert.DoesNotContain("prompt", Encoding.UTF8.GetString(signedBody), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task SignedPushUploadsOnlyTheRequestedPetAsset()
+    {
+        var temporary = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            PetAssetTests.WritePetForUpload(temporary);
+            var asset = Assert.IsType<AmbientOpsPetAsset>(
+                new AmbientOpsPetAssetCatalog(temporary).CurrentAsset());
+            var handler = new PetUploadHandler(asset.Definition.AssetHash);
+            var client = new AmbientOpsPushClient(new HttpClient(handler));
+            var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");
+            var usage = Usage();
+            var pet = new AmbientOpsPetTracker().Snapshot(asset.Definition, usage);
+            using var deviceKey = AmbientOpsDeviceKey.Create();
+
+            await client.PushSignedAsync(
+                new Uri("https://ops.example.test/base"),
+                deviceKey,
+                identity,
+                AmbientOpsAgentSnapshot.FromUsage(usage, identity, pet: pet),
+                asset);
+
+            Assert.Equal(2, handler.Requests.Count);
+            Assert.Equal([HttpMethod.Post, HttpMethod.Put], handler.Requests.Select(item => item.Method));
+            Assert.All(handler.Requests, request => Assert.Equal("AmbientKey windows-pc", request.Authorization));
+            Assert.All(handler.Requests, request => Assert.False(string.IsNullOrWhiteSpace(request.Signature)));
+            Assert.Equal("image/webp", handler.Requests[1].ContentType);
+            Assert.Equal(asset.Data.ToArray(), handler.Requests[1].Body);
+        }
+        finally
+        {
+            Directory.Delete(temporary, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ExportsAndImportsTheSameDeviceKey()
+    {
+        using var original = AmbientOpsDeviceKey.Create();
+        var privateKey = original.ExportPrivateKey();
+        using var imported = AmbientOpsDeviceKey.Import(privateKey);
+
+        Assert.Equal(original.PublicKey, imported.PublicKey);
+        Assert.Equal(original.VerificationCode, imported.VerificationCode);
+    }
+
     private static UsageSnapshot Usage()
     {
         var oneMinute = new WindowMetrics(60, 2, 2, 10, 8, 5, 2, 1, 0.625, 600);
@@ -198,6 +291,7 @@ public sealed class AmbientOpsTests
         string Url,
         string? Authorization,
         string? ContentType,
+        string? Signature,
         byte[] Body);
 
     private sealed class PetUploadHandler(
@@ -218,6 +312,9 @@ public sealed class AmbientOpsTests
                 request.RequestUri!.AbsoluteUri,
                 request.Headers.Authorization?.ToString(),
                 request.Content?.Headers.ContentType?.MediaType,
+                request.Headers.TryGetValues("X-Ambient-Signature", out var signatures)
+                    ? signatures.Single()
+                    : null,
                 body));
 
             return request.Method == HttpMethod.Put

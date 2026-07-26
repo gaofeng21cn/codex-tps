@@ -295,7 +295,8 @@ internal sealed class AmbientStatusControl : Control
         {
             AmbientOpsConnectionKind.Live => Color.FromArgb(52, 199, 89),
             AmbientOpsConnectionKind.Ready or AmbientOpsConnectionKind.NeedsToken or
-                AmbientOpsConnectionKind.Discovering or AmbientOpsConnectionKind.Pushing =>
+                AmbientOpsConnectionKind.Pairing or AmbientOpsConnectionKind.Discovering or
+                AmbientOpsConnectionKind.Pushing =>
                 Color.FromArgb(255, 149, 0),
             AmbientOpsConnectionKind.Disabled => secondary,
             _ => Color.FromArgb(255, 59, 48),

@@ -10,7 +10,8 @@ public sealed record AmbientOpsService(
     string InstanceId,
     string Name,
     Uri Endpoint,
-    string DisplayPath);
+    string DisplayPath,
+    bool SupportsPairing = false);
 
 public static partial class AmbientOpsDiscoveryContract
 {
@@ -50,7 +51,8 @@ public static partial class AmbientOpsDiscoveryContract
             instanceId,
             name.Trim()[..Math.Min(name.Trim().Length, 80)],
             endpoint,
-            NormalizePath(txt.GetValueOrDefault("path")));
+            NormalizePath(txt.GetValueOrDefault("path")),
+            txt.GetValueOrDefault("pairing") == "1");
     }
 
     public static string NormalizePath(string? value)
@@ -290,6 +292,36 @@ public sealed class AmbientOpsPushClient
         return request;
     }
 
+    public HttpRequestMessage CreateSignedRequest(
+        Uri endpoint,
+        AmbientOpsDeviceKey deviceKey,
+        AmbientOpsMachineIdentity identity,
+        AmbientOpsAgentSnapshot snapshot,
+        DateTimeOffset? now = null,
+        string? nonce = null)
+    {
+        if (endpoint.Scheme is not ("http" or "https") || string.IsNullOrWhiteSpace(endpoint.Host))
+        {
+            throw new ArgumentException("Ambient Ops URL must be HTTP or HTTPS.", nameof(endpoint));
+        }
+        ArgumentNullException.ThrowIfNull(deviceKey);
+
+        var url = new Uri(
+            endpoint.AbsoluteUri.TrimEnd('/') +
+            $"/api/v1/agents/{Uri.EscapeDataString(identity.MachineId)}/snapshot");
+        var body = JsonSerializer.SerializeToUtf8Bytes(snapshot, SerializerOptions);
+        return CreateSignedContentRequest(
+            url,
+            HttpMethod.Post,
+            deviceKey,
+            identity,
+            body,
+            "application/json",
+            includeUtf8Charset: true,
+            now: now,
+            nonce: nonce);
+    }
+
     public async Task PushAsync(
         Uri endpoint,
         string token,
@@ -413,8 +445,176 @@ public sealed class AmbientOpsPushClient
         return request;
     }
 
+    internal HttpRequestMessage CreateSignedPetAssetRequest(
+        Uri endpoint,
+        AmbientOpsDeviceKey deviceKey,
+        AmbientOpsMachineIdentity identity,
+        AmbientOpsPetAsset asset,
+        DateTimeOffset? now = null,
+        string? nonce = null)
+    {
+        var url = new Uri(
+            endpoint.AbsoluteUri.TrimEnd('/') +
+            $"/api/v1/agents/{Uri.EscapeDataString(identity.MachineId)}/pets/" +
+            asset.Definition.AssetHash);
+        return CreateSignedContentRequest(
+            url,
+            HttpMethod.Put,
+            deviceKey,
+            identity,
+            asset.Data.ToArray(),
+            "image/webp",
+            includeUtf8Charset: false,
+            now: now,
+            nonce: nonce);
+    }
+
+    private static HttpRequestMessage CreateSignedContentRequest(
+        Uri url,
+        HttpMethod method,
+        AmbientOpsDeviceKey deviceKey,
+        AmbientOpsMachineIdentity identity,
+        byte[] body,
+        string mediaType,
+        bool includeUtf8Charset,
+        DateTimeOffset? now,
+        string? nonce)
+    {
+        var timestamp = (now ?? DateTimeOffset.UtcNow).ToUnixTimeSeconds().ToString(
+            System.Globalization.CultureInfo.InvariantCulture);
+        var requestNonce = nonce ?? AmbientOpsDeviceKey.CreateNonce();
+        var signature = deviceKey.Sign(
+            method.Method,
+            url.AbsolutePath,
+            timestamp,
+            requestNonce,
+            body);
+        var content = new ByteArrayContent(body);
+        content.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
+        if (includeUtf8Charset)
+        {
+            content.Headers.ContentType.CharSet = Encoding.UTF8.WebName;
+        }
+        var request = new HttpRequestMessage(method, url)
+        {
+            Content = content,
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue(
+            "AmbientKey",
+            identity.MachineId);
+        request.Headers.TryAddWithoutValidation("X-Ambient-Timestamp", timestamp);
+        request.Headers.TryAddWithoutValidation("X-Ambient-Nonce", requestNonce);
+        request.Headers.TryAddWithoutValidation("X-Ambient-Signature", signature);
+        return request;
+    }
+
     private sealed record AmbientOpsPushResponse
     {
         public string[] MissingPetAssets { get; init; } = [];
+    }
+
+    public async Task PushSignedAsync(
+        Uri endpoint,
+        AmbientOpsDeviceKey deviceKey,
+        AmbientOpsMachineIdentity identity,
+        AmbientOpsAgentSnapshot snapshot,
+        CancellationToken cancellationToken = default)
+    {
+        await PushSignedAsync(
+            endpoint,
+            deviceKey,
+            identity,
+            snapshot,
+            petAsset: null,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task PushSignedAsync(
+        Uri endpoint,
+        AmbientOpsDeviceKey deviceKey,
+        AmbientOpsMachineIdentity identity,
+        AmbientOpsAgentSnapshot snapshot,
+        AmbientOpsPetAsset? petAsset,
+        CancellationToken cancellationToken = default)
+    {
+        await PushSignedAsync(
+            endpoint,
+            deviceKey,
+            identity,
+            snapshot,
+            petAsset,
+            retryUploadConflict: true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task PushSignedAsync(
+        Uri endpoint,
+        AmbientOpsDeviceKey deviceKey,
+        AmbientOpsMachineIdentity identity,
+        AmbientOpsAgentSnapshot snapshot,
+        AmbientOpsPetAsset? petAsset,
+        bool retryUploadConflict,
+        CancellationToken cancellationToken)
+    {
+        using var request = CreateSignedRequest(endpoint, deviceKey, identity, snapshot);
+        using var response = await httpClient.SendAsync(request, cancellationToken)
+            .ConfigureAwait(false);
+        if ((int)response.StatusCode != 202)
+        {
+            throw new HttpRequestException(
+                $"Ambient Ops returned HTTP {(int)response.StatusCode}.",
+                inner: null,
+                response.StatusCode);
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken)
+            .ConfigureAwait(false);
+        AmbientOpsPushResponse accepted;
+        try
+        {
+            accepted = string.IsNullOrWhiteSpace(body)
+                ? new AmbientOpsPushResponse()
+                : JsonSerializer.Deserialize<AmbientOpsPushResponse>(body, SerializerOptions)
+                    ?? throw new JsonException("Ambient Ops returned an empty response.");
+        }
+        catch (JsonException error)
+        {
+            throw new HttpRequestException("Ambient Ops returned an invalid response.", error);
+        }
+
+        if (petAsset is null ||
+            !accepted.MissingPetAssets.Contains(
+                petAsset.Definition.AssetHash,
+                StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        using var uploadRequest = CreateSignedPetAssetRequest(
+            endpoint,
+            deviceKey,
+            identity,
+            petAsset);
+        using var uploadResponse = await httpClient.SendAsync(uploadRequest, cancellationToken)
+            .ConfigureAwait(false);
+        if ((int)uploadResponse.StatusCode == 409 && retryUploadConflict)
+        {
+            await PushSignedAsync(
+                endpoint,
+                deviceKey,
+                identity,
+                snapshot,
+                petAsset,
+                retryUploadConflict: false,
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if ((int)uploadResponse.StatusCode is not (201 or 204))
+        {
+            throw new HttpRequestException(
+                $"Ambient Ops returned HTTP {(int)uploadResponse.StatusCode}.",
+                inner: null,
+                uploadResponse.StatusCode);
+        }
     }
 }

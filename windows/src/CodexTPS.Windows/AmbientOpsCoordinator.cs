@@ -9,6 +9,7 @@ internal enum AmbientOpsConnectionKind
     Discovering,
     Ready,
     NeedsToken,
+    Pairing,
     Pushing,
     Live,
     Failed,
@@ -17,13 +18,15 @@ internal enum AmbientOpsConnectionKind
 internal sealed record AmbientOpsConnectionStatus(
     AmbientOpsConnectionKind Kind,
     string Message,
-    Uri? Endpoint = null);
+    Uri? Endpoint = null,
+    Uri? ApprovalUri = null);
 
 internal sealed class AmbientOpsCoordinator
 {
     private static readonly TimeSpan PushInterval = TimeSpan.FromSeconds(10);
     private readonly AmbientOpsDiscovery discovery = new();
     private readonly AmbientOpsPushClient pushClient = new();
+    private readonly AmbientOpsPairingClient pairingClient = new();
     private readonly AmbientOpsPetTracker petTracker = new();
     private IReadOnlyList<AmbientOpsService> discoveredServices = [];
     private AmbientOpsService? selectedService;
@@ -31,6 +34,8 @@ internal sealed class AmbientOpsCoordinator
     private AmbientOpsAgentSnapshot? lastSuccessfulSnapshot;
     private AmbientOpsPetAssetCatalog? petAssetCatalog;
     private DateTimeOffset? lastPush;
+    private AmbientOpsPairingSession? pairingSession;
+    private Uri? pairingEndpoint;
     private string configurationKey = string.Empty;
 
     public AmbientOpsConnectionStatus Connection { get; private set; } = new(
@@ -84,7 +89,10 @@ internal sealed class AmbientOpsCoordinator
             destination = selectedService.Name;
         }
 
-        if (string.IsNullOrWhiteSpace(settings.Token))
+        var supportsPairing = settings.AutoDiscover
+            ? selectedService!.SupportsPairing
+            : true;
+        if (string.IsNullOrWhiteSpace(settings.Token) && !supportsPairing)
         {
             SetStatus(
                 AmbientOpsConnectionKind.NeedsToken,
@@ -115,13 +123,30 @@ internal sealed class AmbientOpsCoordinator
 
         try
         {
-            await PushAsync(
-                endpoint,
-                payload,
-                identity,
-                settings.Token,
-                petAsset,
-                cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(settings.Token))
+            {
+                if (!await PushSignedOrPairAsync(
+                    endpoint,
+                    payload,
+                    identity,
+                    settings,
+                    petAsset,
+                    force,
+                    cancellationToken).ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                await PushAsync(
+                    endpoint,
+                    payload,
+                    identity,
+                    settings.Token,
+                    petAsset,
+                    cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (HttpRequestException error) when (
             error.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
@@ -149,13 +174,31 @@ internal sealed class AmbientOpsCoordinator
             selectedService = fallback;
             try
             {
-                await PushAsync(
-                    fallback.Endpoint,
-                    payload,
-                    identity,
-                    settings.Token,
-                    petAsset,
-                    cancellationToken).ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(settings.Token))
+                {
+                    if (!fallback.SupportsPairing ||
+                        !await PushSignedOrPairAsync(
+                            fallback.Endpoint,
+                            payload,
+                            identity,
+                            settings,
+                            petAsset,
+                            force,
+                            cancellationToken).ConfigureAwait(false))
+                    {
+                        return;
+                    }
+                }
+                else
+                {
+                    await PushAsync(
+                        fallback.Endpoint,
+                        payload,
+                        identity,
+                        settings.Token,
+                        petAsset,
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
             catch (Exception fallbackError) when (
                 !cancellationToken.IsCancellationRequested &&
@@ -197,6 +240,111 @@ internal sealed class AmbientOpsCoordinator
             .ConfigureAwait(false);
     }
 
+    private async Task<bool> PushSignedOrPairAsync(
+        Uri endpoint,
+        AmbientOpsAgentSnapshot payload,
+        AmbientOpsMachineIdentity identity,
+        AppSettings settings,
+        AmbientOpsPetAsset? petAsset,
+        bool force,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(settings.DevicePrivateKey))
+        {
+            SetStatus(
+                AmbientOpsConnectionKind.Failed,
+                "无法创建本机安全配对密钥",
+                endpoint);
+            return false;
+        }
+
+        using var deviceKey = AmbientOpsDeviceKey.Import(settings.DevicePrivateKey);
+        try
+        {
+            SetStatus(AmbientOpsConnectionKind.Pushing, $"正在安全推送到 {endpoint.Host}", endpoint);
+            await pushClient.PushSignedAsync(
+                endpoint,
+                deviceKey,
+                identity,
+                payload,
+                petAsset,
+                cancellationToken).ConfigureAwait(false);
+            pairingSession = null;
+            pairingEndpoint = endpoint;
+            return true;
+        }
+        catch (HttpRequestException error) when (
+            error.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+        {
+            if (pairingEndpoint != endpoint)
+            {
+                pairingSession = null;
+                pairingEndpoint = endpoint;
+            }
+            if (pairingSession is { IsPending: true })
+            {
+                try
+                {
+                    pairingSession = await pairingClient.GetAsync(
+                        endpoint,
+                        pairingSession.RequestId,
+                        cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException pollError) when (pollError.StatusCode == HttpStatusCode.NotFound)
+                {
+                    pairingSession = null;
+                }
+            }
+            if (pairingSession is { Status: "rejected" } && !force)
+            {
+                SetStatus(
+                    AmbientOpsConnectionKind.Failed,
+                    "配对请求已拒绝 · 手动刷新可重试",
+                    endpoint);
+                return false;
+            }
+            if (pairingSession is null || !pairingSession.IsPending && !pairingSession.IsApproved)
+            {
+                try
+                {
+                    pairingSession = await pairingClient.BeginAsync(
+                        endpoint,
+                        identity,
+                        deviceKey,
+                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException pairingError) when (
+                    pairingError.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.ServiceUnavailable)
+                {
+                    SetStatus(
+                        AmbientOpsConnectionKind.NeedsToken,
+                        "此 Ambient Ops 版本不支持安全配对 · 请升级或使用兼容令牌",
+                        endpoint);
+                    return false;
+                }
+            }
+            if (pairingSession.IsApproved)
+            {
+                await pushClient.PushSignedAsync(
+                    endpoint,
+                    deviceKey,
+                    identity,
+                    payload,
+                    petAsset,
+                    cancellationToken).ConfigureAwait(false);
+                pairingSession = null;
+                return true;
+            }
+            var approvalUri = AmbientOpsPairingClient.ApprovalUri(endpoint, pairingSession);
+            SetStatus(
+                AmbientOpsConnectionKind.Pairing,
+                $"等待批准 · 配对码 {deviceKey.VerificationCode}",
+                endpoint,
+                approvalUri);
+            return false;
+        }
+    }
+
     private void RecordSuccess(
         UsageSnapshot usage,
         AmbientOpsAgentSnapshot payload,
@@ -228,8 +376,14 @@ internal sealed class AmbientOpsCoordinator
         discoveredServices = [];
         selectedService = null;
         petAssetCatalog = new AmbientOpsPetAssetCatalog(codexHome);
+        pairingSession = null;
+        pairingEndpoint = null;
     }
 
-    private void SetStatus(AmbientOpsConnectionKind kind, string message, Uri? endpoint = null) =>
-        Connection = new AmbientOpsConnectionStatus(kind, message, endpoint);
+    private void SetStatus(
+        AmbientOpsConnectionKind kind,
+        string message,
+        Uri? endpoint = null,
+        Uri? approvalUri = null) =>
+        Connection = new AmbientOpsConnectionStatus(kind, message, endpoint, approvalUri);
 }

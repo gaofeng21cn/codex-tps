@@ -14,8 +14,9 @@ Codex home and can send aggregate metrics to Ambient Ops on the local network.
 - Manual Ambient Ops HTTP(S) URL override
 - Optional Ledger Owl state using the same Ambient Ops v2 payload as macOS
 - Optional per-user startup through `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
-- Push token encrypted for the current Windows user with DPAPI
-- One-click token paste saves the clipboard value and immediately reconnects
+- Automatic one-click pairing with Ambient Ops v0.1.4+ after LAN discovery
+- Per-device P-256 private key encrypted for the current Windows user with DPAPI
+- Legacy push token remains available as a DPAPI-protected compatibility path
 
 The dashboard reports one-minute total, input, cached input, output, reasoning
 and session activity as TPS values. Cached input remains a subset of input, and
@@ -92,7 +93,7 @@ windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
 To build the standard installer, also install Inno Setup 6 and run:
 
 ```powershell
-pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.8
+pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.9
 ```
 
 This additionally creates:
@@ -144,3 +145,9 @@ Before calling a Windows build production-ready, verify on a clean Windows 11
 machine: first launch, tray interaction, DPAPI persistence, startup after sign-in,
 local-network firewall consent and discovery, sleep/network recovery, and an
 actual Ambient Ops accepted push.
+
+With Ambient Ops v0.1.4+, first discovery creates a device key locally, opens the
+server approval page once, and shows the same six-digit code in Codex TPS. After
+approval, signed pushes resume automatically across application restarts. The
+settings file must contain `ProtectedDevicePrivateKey`, never a plaintext private
+key. The **Compatible token** field is only for older Ambient Ops servers.

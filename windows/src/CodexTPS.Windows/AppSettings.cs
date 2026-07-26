@@ -1,3 +1,4 @@
+using CodexTPS.Core;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -7,7 +8,7 @@ namespace CodexTPS.WindowsApp;
 
 internal sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = 2;
     public bool AmbientEnabled { get; set; } = true;
     public bool AutoDiscover { get; set; } = true;
     public string CodexHome { get; set; } = string.Empty;
@@ -19,9 +20,13 @@ internal sealed class AppSettings
     public bool StartWithWindows { get; set; }
     public int RefreshSeconds { get; set; } = 5;
     public string ProtectedToken { get; set; } = string.Empty;
+    public string ProtectedDevicePrivateKey { get; set; } = string.Empty;
 
     [JsonIgnore]
     public string Token { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public string DevicePrivateKey { get; set; } = string.Empty;
 
     private static string DefaultMachineId()
     {
@@ -65,11 +70,18 @@ internal sealed class AppSettingsStore
             var settings = JsonSerializer.Deserialize<AppSettings>(
                 File.ReadAllText(SettingsPath),
                 Options) ?? new AppSettings();
+            var needsMigration = settings.SchemaVersion < 2;
+            settings.SchemaVersion = 2;
             if (settings.RefreshSeconds is not (5 or 15 or 30 or 60))
             {
                 settings.RefreshSeconds = 5;
             }
             settings.Token = Unprotect(settings.ProtectedToken);
+            settings.DevicePrivateKey = Unprotect(settings.ProtectedDevicePrivateKey);
+            if (needsMigration)
+            {
+                Save(settings);
+            }
             return settings;
         }
         catch (Exception error) when (
@@ -84,11 +96,23 @@ internal sealed class AppSettingsStore
     {
         LastError = null;
         settings.ProtectedToken = Protect(settings.Token);
+        settings.ProtectedDevicePrivateKey = Protect(settings.DevicePrivateKey);
         var directory = Path.GetDirectoryName(SettingsPath)!;
         Directory.CreateDirectory(directory);
         var temporaryPath = SettingsPath + ".tmp";
         File.WriteAllText(temporaryPath, JsonSerializer.Serialize(settings, Options));
         File.Move(temporaryPath, SettingsPath, overwrite: true);
+    }
+
+    public bool EnsureDeviceKey(AppSettings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.DevicePrivateKey))
+        {
+            return false;
+        }
+        using var key = AmbientOpsDeviceKey.Create();
+        settings.DevicePrivateKey = key.ExportPrivateKey();
+        return true;
     }
 
     private static string Protect(string value)

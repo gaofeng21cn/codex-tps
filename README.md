@@ -316,6 +316,11 @@ cd codex-tps
 在 macOS Keychain 的 `cn.gaofeng.ambient-ops.agent-push` 服务中，不会写入
 App 偏好设置。
 
+Windows `v0.2.9+` 与 Ambient Ops `v0.1.4+` 默认使用一次批准的设备配对：
+自动发现后打开批准页，核对六位配对码并点击允许即可。Windows 私钥只以当前用户
+DPAPI 密文保存在 `settings.json`，NAS 只保存公钥；无需复制
+`agent_push_token`。设置中的兼容令牌只用于旧版 Ambient Ops。
+
 headless agent 在没有设置 `CODEX_TPS_AMBIENT_URL` 时同样会自动发现。可用
 `CODEX_TPS_AMBIENT_INSTANCE_ID` 指定首选实例；首选端点推送失败后，会尝试同一
 轮发现中的其他兼容实例。显式 URL 始终覆盖自动发现：
