@@ -8,6 +8,7 @@ INSTALL_DIR="${CODEX_TPS_INSTALL_DIR:-/Applications}"
 RUNNING_PID="${CODEX_TPS_RUNNING_PID:-}"
 RUNNING_APP="${CODEX_TPS_RUNNING_APP:-}"
 OPEN_COMMAND="${CODEX_TPS_OPEN_COMMAND:-/usr/bin/open}"
+UPDATER_TEST_ROOT="${CODEX_TPS_UPDATER_TEST_ROOT:-}"
 DMG_URL="${CODEX_TPS_DMG_URL:-https://github.com/$REPOSITORY/releases/latest/download/Codex-TPS.dmg}"
 CHECKSUM_URL="${CODEX_TPS_CHECKSUM_URL:-https://github.com/$REPOSITORY/releases/latest/download/Codex-TPS.dmg.sha256}"
 TEMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-tps-install.XXXXXX")"
@@ -21,6 +22,7 @@ REPLACEMENT_STARTED=0
 HAD_EXISTING_APP=0
 NEW_PID=""
 ROLLBACK_PID=""
+ALLOW_AD_HOC_TEST=0
 
 cleanup() {
   local exit_status=$?
@@ -53,18 +55,64 @@ verify_app() {
   signature_details="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
   actual_team_id="$(sed -n 's/^TeamIdentifier=//p' <<<"$signature_details")"
   actual_bundle_id="$(sed -n 's/^Identifier=//p' <<<"$signature_details")"
-  if [[ "$actual_team_id" != "$EXPECTED_TEAM_ID" ]]; then
-    echo "Codex TPS Team ID verification failed." >&2
-    return 1
-  fi
   if [[ "$actual_bundle_id" != "$EXPECTED_BUNDLE_ID" ]]; then
     echo "Codex TPS bundle ID verification failed." >&2
+    return 1
+  fi
+  if [[ "$ALLOW_AD_HOC_TEST" -eq 1 ]]; then
+    grep -q '^Signature=adhoc$' <<<"$signature_details"
+    return
+  fi
+  if [[ "$actual_team_id" != "$EXPECTED_TEAM_ID" ]]; then
+    echo "Codex TPS Team ID verification failed." >&2
     return 1
   fi
   grep -q '^Authority=Developer ID Application:' <<<"$signature_details"
   grep -q 'flags=.*runtime' <<<"$signature_details"
   grep -q '^Timestamp=' <<<"$signature_details"
   spctl --assess --type execute --verbose=2 "$app_path"
+}
+
+configure_updater_test_trust() {
+  local resolved_test_root resolved_install_dir
+
+  [[ -n "$UPDATER_TEST_ROOT" ]] || return 0
+  if [[ ! -d "$UPDATER_TEST_ROOT" || ! -d "$INSTALL_DIR" ]]; then
+    echo "Codex TPS updater test trust mode requires existing test directories." >&2
+    return 1
+  fi
+  resolved_test_root="$(cd "$UPDATER_TEST_ROOT" && /bin/pwd -P)"
+  resolved_install_dir="$(cd "$INSTALL_DIR" && /bin/pwd -P)"
+  if [[ "$resolved_test_root" == "/" ]]; then
+    echo "Codex TPS updater test trust mode received an unsafe test root." >&2
+    return 1
+  fi
+  case "$resolved_install_dir/" in
+    "$resolved_test_root"/*) ;;
+    *)
+      echo "Codex TPS updater test trust mode is restricted to its test root." >&2
+      return 1
+      ;;
+  esac
+  case "$RUNNING_APP/" in
+    "$resolved_test_root"/*) ;;
+    *)
+      echo "Codex TPS updater test trust mode requires a test app path." >&2
+      return 1
+      ;;
+  esac
+  case "$OPEN_COMMAND" in
+    "$resolved_test_root"/*) ;;
+    *)
+      echo "Codex TPS updater test trust mode requires a test launch command." >&2
+      return 1
+      ;;
+  esac
+  if [[ "$DMG_URL" != file://* || "$CHECKSUM_URL" != file://* ]]; then
+    echo "Codex TPS updater test trust mode accepts only local artifacts." >&2
+    return 1
+  fi
+  ALLOW_AD_HOC_TEST=1
 }
 
 process_matches_app() {
@@ -248,6 +296,7 @@ rollback_replacement() {
   fi
 }
 
+configure_updater_test_trust
 validate_running_process_contract
 if [[ "${CODEX_TPS_NO_LAUNCH:-0}" != "1" && ! -x "$OPEN_COMMAND" ]]; then
   echo "Codex TPS launch command is unavailable." >&2
@@ -321,4 +370,8 @@ echo "Installed Codex TPS $VERSION at $DEST_APP"
 if [[ -n "$NEW_PID" ]]; then
   echo "Launched Codex TPS as process $NEW_PID."
 fi
-echo "The app is Developer ID signed and notarized by Apple."
+if [[ "$ALLOW_AD_HOC_TEST" -eq 1 ]]; then
+  echo "The app passed isolated ad-hoc updater verification."
+else
+  echo "The app is Developer ID signed and notarized by Apple."
+fi

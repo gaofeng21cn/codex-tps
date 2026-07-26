@@ -16,11 +16,18 @@ jobs:
           xcrun swift --version
           xcrun --show-sdk-version
       - name: Lint
-        run: xcrun swift-format lint --recursive Sources Tests Package.swift
+        run: |
+          xcrun swift-format lint --recursive Sources Tests Package.swift
+          bash -n scripts/install-release.sh
+          bash -n scripts/verify-updater.sh
       - name: Test
         run: swift test
       - name: Package DMG
         run: ./scripts/build-dmg.sh
+      - name: Verify updater transaction
+        env:
+          CODEX_TPS_UPDATER_VERIFY_MODE: adhoc
+        run: ./scripts/verify-updater.sh
       - uses: actions/upload-artifact@v7
         with:
           name: codex-tps-dmg
@@ -49,15 +56,15 @@ jobs:
           }
           Write-Output "Inno Setup $((Get-Item $compiler).VersionInfo.FileVersion)"
       - name: Test and build Windows packages
-        run: ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.11
+        run: ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.12
       - name: Verify portable package
         run: |
           $archive = "./windows/dist/Codex-TPS-Windows-win-x64.zip"
           $install = Join-Path $env:RUNNER_TEMP "Codex TPS portable"
           ./windows/scripts/install.ps1 -ArchivePath $archive -InstallDirectory $install -NoLaunch
           $executable = Get-Item (Join-Path $install "CodexTPS.exe")
-          if (-not $executable.VersionInfo.ProductVersion.StartsWith("0.2.11")) {
-            throw "Expected Windows product version 0.2.11, got $($executable.VersionInfo.ProductVersion)."
+          if (-not $executable.VersionInfo.ProductVersion.StartsWith("0.2.12")) {
+            throw "Expected Windows product version 0.2.12, got $($executable.VersionInfo.ProductVersion)."
           }
           Write-Output "Verified $($executable.FullName) $($executable.VersionInfo.ProductVersion)"
       - name: Verify Windows installer and uninstaller
@@ -80,8 +87,8 @@ jobs:
           if ($result.ExitCode -ne 0) { throw "Installer exited with $($result.ExitCode)." }
 
           $executable = Get-Item (Join-Path $install "CodexTPS.exe")
-          if (-not $executable.VersionInfo.ProductVersion.StartsWith("0.2.11")) {
-            throw "Expected installed version 0.2.11, got $($executable.VersionInfo.ProductVersion)."
+          if (-not $executable.VersionInfo.ProductVersion.StartsWith("0.2.12")) {
+            throw "Expected installed version 0.2.12, got $($executable.VersionInfo.ProductVersion)."
           }
           $uninstaller = Join-Path $install "unins000.exe"
           $result = Start-Process $uninstaller `
