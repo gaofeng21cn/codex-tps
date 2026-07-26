@@ -9,7 +9,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly AmbientOpsCoordinator ambientOps = new();
     private readonly CancellationTokenSource cancellation = new();
     private readonly Icon applicationIcon;
+    private readonly ContextMenuStrip trayMenu;
     private readonly NotifyIcon trayIcon;
+    private readonly TaskbarReadoutForm taskbarReadout;
     private readonly System.Windows.Forms.Timer refreshTimer;
     private Icon? rateIcon;
     private AppSettings settings;
@@ -41,12 +43,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         scanner = CreateScanner(settings);
         dashboard = CreateDashboard(scanner.SessionsRoot);
 
-        var menu = new ContextMenuStrip();
-        menu.Items.Add("打开", null, (_, _) => dashboard.ShowFromTray());
-        menu.Items.Add("刷新", null, async (_, _) => await RefreshAsync(forcePush: true));
-        menu.Items.Add("设置", null, (_, _) => ShowSettings());
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("退出", null, (_, _) => ExitThread());
+        trayMenu = new ContextMenuStrip();
+        trayMenu.Items.Add("打开", null, (_, _) => dashboard.ShowFromTray());
+        trayMenu.Items.Add("刷新", null, async (_, _) => await RefreshAsync(forcePush: true));
+        trayMenu.Items.Add("设置", null, (_, _) => ShowSettings());
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add("退出", null, (_, _) => ExitThread());
         applicationIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath)
             ?? (Icon)SystemIcons.Application.Clone();
         trayIcon = new NotifyIcon
@@ -54,7 +56,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             Icon = applicationIcon,
             Text = "Codex TPS",
             Visible = true,
-            ContextMenuStrip = menu,
+            ContextMenuStrip = trayMenu,
         };
         trayIcon.MouseClick += (_, eventArgs) =>
         {
@@ -64,6 +66,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
         };
         trayIcon.DoubleClick += (_, _) => dashboard.ShowFromTray();
+        taskbarReadout = new TaskbarReadoutForm(trayMenu);
+        taskbarReadout.OpenRequested += (_, _) => dashboard.ShowFromTray();
+        taskbarReadout.Start();
 
         refreshTimer = new System.Windows.Forms.Timer
         {
@@ -84,8 +89,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
     {
         refreshTimer.Stop();
         cancellation.Cancel();
+        taskbarReadout.Dispose();
         trayIcon.Visible = false;
+        trayIcon.ContextMenuStrip = null;
         trayIcon.Dispose();
+        trayMenu.Dispose();
         rateIcon?.Dispose();
         applicationIcon.Dispose();
         dashboard.CloseForExit();
@@ -125,6 +133,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             dashboard.UpdateSnapshot(lastSnapshot, ambientOps.Connection);
             OpenPairingApprovalIfNeeded(ambientOps.Connection);
             UpdateTrayRateIcon(lastSnapshot);
+            taskbarReadout.SetRate(
+                lastSnapshot.Status == CollectionStatus.Ready
+                    ? lastSnapshot.OneMinute.TokensPerSecond
+                    : null);
             trayIcon.Text = lastSnapshot.Status == CollectionStatus.Ready
                 ? $"Codex TPS · {Compact(lastSnapshot.OneMinute.TokensPerSecond)} t/s"
                 : "Codex TPS · sessions unavailable";
