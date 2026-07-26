@@ -143,7 +143,9 @@ remain excluded until a verifiable UUIDv7 child turn begins.
 The app checks for a release after launch and every six hours while running. A
 new version is installed only after the user clicks **Update now**. The DMG must
 match the release's published SHA-256 checksum and expected version before the
-installed app is replaced.
+installed app is replaced. The updater then hands off from the exact old process
+to a distinct new process; if the replacement cannot remain running, it restores
+and relaunches the previous app.
 
 Codex TPS is operational telemetry, not billing data. It reports usage visible
 in local Codex logs and cannot prove which API key was charged. Log formats are
@@ -166,7 +168,7 @@ CODEX_HOME=/path/to/codex-home swift run codex-tps-snapshot --json
 The menu bar app can discover `_ambient-ops._tcp.local` automatically. Its
 collapsed Ambient Ops settings let you disable integration, switch to a manual
 HTTP(S) URL, rediscover the server, and choose the pet reported for this Mac.
-With Ambient Ops v0.1.4 or newer, Codex TPS v0.2.11 automatically creates a
+With Ambient Ops v0.1.4 or newer, Codex TPS v0.2.12 automatically creates a
 per-device P-256 key in the macOS Keychain, opens the local approval page, and
 starts signed pushes after the user verifies the six-digit code. The private
 key never leaves the Mac, and no shared push token needs to be copied. An
@@ -286,8 +288,9 @@ brew install --cask gaofeng21cn/codex-tps/codex-tps
 打开后将应用拖入 Applications。
 
 应用启动后会自动检查 GitHub latest release，运行期间每 6 小时检查一次；发现
-新版本后由用户点击“立即更新”，不会无提示退出或强制更新。也可随时点击面板
-顶部的检查更新按钮。
+新版本后由用户点击“立即更新”，不会无提示退出或强制更新。安装器会确认旧进程
+退出并启动一个新的 App 进程；若新版不能持续运行，会恢复并重新启动旧版。也可
+随时点击面板顶部的检查更新按钮。
 
 Release 使用项目的 Apple Developer ID 签名并经过 Apple notarization；发布的
 DMG 带有 stapled 公证票据，可通过 Finder 正常打开，无需绕过 Gatekeeper。
@@ -317,7 +320,7 @@ cd codex-tps
 
 菜单栏 App 可以自动发现 `_ambient-ops._tcp.local`。折叠设置中可以关闭集成、
 改用手动 HTTP(S) 地址、重新发现服务端，以及选择本机上报的宠物。Codex TPS
-`v0.2.11+` 与 Ambient Ops `v0.1.4+` 会自动在 macOS Keychain 生成每台设备
+`v0.2.12+` 与 Ambient Ops `v0.1.4+` 会自动在 macOS Keychain 生成每台设备
 独立的 P-256 私钥，自动打开局域网批准页；核对六位配对码并批准后即可开始签名
 推送，不需要复制共享令牌。私钥不会离开本机。已有
 `cn.gaofeng.ambient-ops.agent-push` 令牌仍作为旧部署的兼容路径。
