@@ -31,5 +31,9 @@ let package = Package(
       name: "CodexTPSCoreTests",
       dependencies: ["CodexTPSCore"]
     ),
+    .testTarget(
+      name: "CodexTPSAppTests",
+      dependencies: ["CodexTPS", "CodexTPSCore"]
+    ),
   ]
 )

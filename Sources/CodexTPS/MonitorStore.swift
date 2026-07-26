@@ -23,8 +23,11 @@ final class MonitorStore: ObservableObject {
   private let ambientPetCatalog: AmbientOpsPetAssetCatalog
   private let ambientMachineID: String
   private let ambientDiscovery = AmbientOpsDiscovery()
+  private let ambientKeychain = AmbientOpsKeychain()
   private var refreshLoop: Task<Void, Never>?
   private var ambientPushTask: Task<Void, Never>?
+  private var ambientRetryTask: Task<Void, Never>?
+  private var ambientFailureCount = 0
   private var ambientService: AmbientOpsService?
   private var ambientPairingSession: AmbientOpsPairingSession?
   private var ambientPairingEndpoint: URL?
@@ -211,6 +214,7 @@ final class MonitorStore: ObservableObject {
   private func refreshAmbientConfiguration() {
     ambientPushTask?.cancel()
     ambientPushTask = nil
+    resetAmbientRetry()
 
     guard ambientEnabled else {
       ambientDiscovery.stop()
@@ -246,7 +250,7 @@ final class MonitorStore: ObservableObject {
   }
 
   private func pushAmbient(_ usage: UsageSnapshot) {
-    guard ambientEnabled, ambientPushTask == nil else { return }
+    guard ambientEnabled, ambientPushTask == nil, ambientRetryTask == nil else { return }
     let service = ambientService
     let endpoint: URL?
     let name: String
@@ -258,11 +262,6 @@ final class MonitorStore: ObservableObject {
       name = endpoint?.host ?? "Ambient Ops"
     }
     guard let endpoint else { return }
-    let token = AmbientOpsKeychain.token()
-    if token == nil, ambientAutoDiscover, service?.supportsPairing != true {
-      ambientConnection = .failed(message: "此 Ambient Ops 不支持安全配对")
-      return
-    }
     let reportLocalPet = ambientPet == .localCodex
 
     ambientPushTask = Task { [weak self] in
@@ -270,6 +269,11 @@ final class MonitorStore: ObservableObject {
       defer { ambientPushTask = nil }
       ambientConnection = .pushing(name: name, endpoint: endpoint)
       do {
+        let token = try ambientKeychain.token()
+        if token == nil, ambientAutoDiscover, service?.supportsPairing != true {
+          ambientConnection = .failed(message: "此 Ambient Ops 不支持安全配对")
+          return
+        }
         let petAsset = reportLocalPet ? await ambientPetCatalog.currentAsset() : nil
         let pet = petAsset.map {
           ambientPetTracker.snapshot(definition: $0.definition, usage: usage)
@@ -289,7 +293,7 @@ final class MonitorStore: ObservableObject {
           )
           try await AmbientOpsPushClient(request: request).push(payload, petAsset: petAsset)
         } else {
-          let deviceKey = try AmbientOpsKeychain.deviceKey()
+          let deviceKey = try ambientKeychain.deviceKey()
           try await pushSignedAmbient(
             payload,
             petAsset: petAsset,
@@ -302,6 +306,7 @@ final class MonitorStore: ObservableObject {
         if usage.status == .ready {
           lastAmbientSnapshot = payload
         }
+        resetAmbientRetry()
         ambientConnection = .live(name: name, endpoint: endpoint, pushedAt: Date())
       } catch is CancellationError {
         return
@@ -309,11 +314,12 @@ final class MonitorStore: ObservableObject {
         ambientConnection = .failed(message: "配对请求已拒绝 · 请重新发现后重试")
       } catch {
         ambientConnection = .failed(message: "推送失败：\(error.localizedDescription)")
-        if ambientAutoDiscover {
-          ambientService = nil
-          ambientDiscovery.stop()
-          ambientDiscovery.start(preferredInstanceID: nil)
-        }
+        scheduleAmbientRetry(
+          behavior: AmbientOpsRetryBehavior.behavior(
+            for: error,
+            autoDiscover: ambientAutoDiscover
+          )
+        )
       }
     }
   }
@@ -408,6 +414,36 @@ final class MonitorStore: ObservableObject {
     ambientPairingSession = nil
     ambientPairingEndpoint = nil
     openedAmbientPairingRequestID = nil
+  }
+
+  private func scheduleAmbientRetry(behavior: AmbientOpsRetryBehavior) {
+    ambientRetryTask?.cancel()
+    ambientFailureCount += 1
+    let delay = AmbientOpsRetryPolicy.delay(forFailureCount: ambientFailureCount)
+    ambientRetryTask = Task { [weak self] in
+      do {
+        try await Task.sleep(for: .seconds(delay))
+      } catch {
+        return
+      }
+      guard let self, ambientEnabled else { return }
+      ambientRetryTask = nil
+      if behavior == .rediscover, ambientAutoDiscover {
+        ambientService = nil
+        resetAmbientPairing()
+        ambientDiscovery.stop()
+        ambientConnection = .discovering
+        ambientDiscovery.start(preferredInstanceID: nil)
+      } else {
+        pushAmbient(snapshot)
+      }
+    }
+  }
+
+  private func resetAmbientRetry() {
+    ambientRetryTask?.cancel()
+    ambientRetryTask = nil
+    ambientFailureCount = 0
   }
 }
 
