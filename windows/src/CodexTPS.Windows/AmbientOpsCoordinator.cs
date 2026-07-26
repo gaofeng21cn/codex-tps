@@ -23,6 +23,8 @@ internal sealed record AmbientOpsConnectionStatus(
 
 internal sealed class AmbientOpsCoordinator
 {
+    internal static readonly TimeSpan PairingCapabilityRefreshInterval =
+        TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PushInterval = TimeSpan.FromSeconds(10);
     private readonly AmbientOpsDiscovery discovery = new();
     private readonly AmbientOpsPushClient pushClient = new();
@@ -33,6 +35,7 @@ internal sealed class AmbientOpsCoordinator
     private AmbientOpsServiceSelector? selector;
     private AmbientOpsAgentSnapshot? lastSuccessfulSnapshot;
     private AmbientOpsPetAssetCatalog? petAssetCatalog;
+    private DateTimeOffset? lastDiscovery;
     private DateTimeOffset? lastPush;
     private AmbientOpsPairingSession? pairingSession;
     private Uri? pairingEndpoint;
@@ -72,11 +75,22 @@ internal sealed class AmbientOpsCoordinator
         }
         else
         {
+            if (selectedService is { SupportsPairing: false } staleService &&
+                ShouldRefreshPairingCapability(
+                    settings.Token,
+                    staleService,
+                    lastDiscovery,
+                    DateTimeOffset.Now))
+            {
+                discoveredServices = [];
+                selectedService = null;
+            }
             if (discoveredServices.Count == 0)
             {
                 SetStatus(AmbientOpsConnectionKind.Discovering, "正在自动发现");
                 discoveredServices = await discovery.DiscoverAsync(cancellationToken)
                     .ConfigureAwait(false);
+                lastDiscovery = DateTimeOffset.Now;
                 selector!.ResetFailures();
             }
             selectedService ??= selector!.Select(discoveredServices);
@@ -225,6 +239,16 @@ internal sealed class AmbientOpsCoordinator
         }
         RecordSuccess(usage, payload, destination, endpoint);
     }
+
+    internal static bool ShouldRefreshPairingCapability(
+        string token,
+        AmbientOpsService service,
+        DateTimeOffset? discoveredAt,
+        DateTimeOffset now) =>
+        string.IsNullOrWhiteSpace(token) &&
+        !service.SupportsPairing &&
+        discoveredAt is { } timestamp &&
+        now - timestamp >= PairingCapabilityRefreshInterval;
 
     private async Task PushAsync(
         Uri endpoint,
@@ -375,6 +399,7 @@ internal sealed class AmbientOpsCoordinator
         selector = new AmbientOpsServiceSelector(settings.PreferredInstanceId);
         discoveredServices = [];
         selectedService = null;
+        lastDiscovery = null;
         petAssetCatalog = new AmbientOpsPetAssetCatalog(codexHome);
         pairingSession = null;
         pairingEndpoint = null;
