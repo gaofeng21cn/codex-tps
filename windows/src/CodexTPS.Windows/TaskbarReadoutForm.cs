@@ -344,7 +344,8 @@ internal sealed class TaskbarReadoutForm : Form
 internal static class TaskbarReadoutAppearance
 {
     internal const byte TransparentHitTestAlpha = 1;
-    private const float HorizontalFontLogicalPixels = 12f;
+    private const string Indicator = "∿";
+    private const float HorizontalFontLogicalPixels = 24f;
     private const float VerticalFontLogicalPixels = 11f;
 
     public static FontStyle TextFontStyle => FontStyle.Regular;
@@ -359,8 +360,22 @@ internal static class TaskbarReadoutAppearance
     }
 
     public static Color TextColor(bool lightTheme) => lightTheme
-        ? Color.FromArgb(32, 32, 32)
+        ? Color.Black
         : Color.White;
+
+    public static string DisplayText(string rateText, TaskbarEdge edge)
+    {
+        if (edge is TaskbarEdge.Left or TaskbarEdge.Right)
+        {
+            var verticalRate = rateText.Replace(
+                " ",
+                Environment.NewLine,
+                StringComparison.Ordinal);
+            return $"{Indicator}{Environment.NewLine}{verticalRate}";
+        }
+
+        return $"{Indicator} {rateText}";
+    }
 
     public static Bitmap Render(
         Size size,
@@ -380,10 +395,7 @@ internal static class TaskbarReadoutAppearance
         graphics.SmoothingMode = SmoothingMode.AntiAlias;
         graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
 
-        var vertical = edge is TaskbarEdge.Left or TaskbarEdge.Right;
-        var displayText = vertical
-            ? rateText.Replace(" ", Environment.NewLine, StringComparison.Ordinal)
-            : rateText;
+        var displayText = DisplayText(rateText, edge);
         using var textBrush = new SolidBrush(textColor);
         using var font = new Font(
             "Segoe UI Variable Text",
