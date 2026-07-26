@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import XCTest
 
@@ -170,22 +171,28 @@ final class AmbientOpsPushTests: XCTestCase {
     let snapshot = AmbientOpsAgentSnapshot(
       usage: usageSnapshot(status: .ready), identity: identity)
     let accepted = AmbientOpsPushClient(request: request) { request in
-      HTTPURLResponse(
-        url: request.url!,
-        statusCode: 202,
-        httpVersion: nil,
-        headerFields: nil
-      )!
+      (
+        Data(#"{"missingPetAssets":[]}"#.utf8),
+        HTTPURLResponse(
+          url: request.url!,
+          statusCode: 202,
+          httpVersion: nil,
+          headerFields: nil
+        )!
+      )
     }
     try await accepted.push(snapshot)
 
     let rejected = AmbientOpsPushClient(request: request) { request in
-      HTTPURLResponse(
-        url: request.url!,
-        statusCode: 401,
-        httpVersion: nil,
-        headerFields: nil
-      )!
+      (
+        Data(),
+        HTTPURLResponse(
+          url: request.url!,
+          statusCode: 401,
+          httpVersion: nil,
+          headerFields: nil
+        )!
+      )
     }
     do {
       try await rejected.push(snapshot)
@@ -193,6 +200,149 @@ final class AmbientOpsPushTests: XCTestCase {
     } catch let error as AmbientOpsPushError {
       XCTAssertEqual(error, .server(401))
     }
+  }
+
+  func testUploadsOnlyRequestedPetAssetWithBearerToken() async throws {
+    let identity = try AmbientOpsMachineIdentity(
+      machineID: "primary", machineName: "Primary", platform: "macOS")
+    let request = try AmbientOpsPushRequest(
+      endpoint: XCTUnwrap(URL(string: "https://ops.example.test/base")),
+      token: "test-token",
+      identity: identity
+    )
+    let assetData = webP(payload: Data("pet pixels".utf8))
+    let hash = SHA256.hash(data: assetData)
+      .map { String(format: "%02x", $0) }
+      .joined()
+    let definition = try AmbientOpsPetDefinition(
+      id: "local-pet",
+      displayName: "Local Pet",
+      spriteVersionNumber: 2,
+      assetHash: hash
+    )
+    let asset = AmbientOpsPetAsset(definition: definition, data: assetData)
+    let recorder = URLRequestRecorder()
+    let client = AmbientOpsPushClient(request: request) { urlRequest in
+      await recorder.append(urlRequest)
+      let status = urlRequest.httpMethod == "PUT" ? 201 : 202
+      let data =
+        urlRequest.httpMethod == "PUT"
+        ? Data(#"{"stored":true}"#.utf8)
+        : Data(#"{"accepted":true,"missingPetAssets":["\#(hash)"]}"#.utf8)
+      return (
+        data,
+        HTTPURLResponse(
+          url: urlRequest.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+      )
+    }
+
+    let usage = usageSnapshot(status: .ready)
+    var tracker = AmbientOpsPetTracker()
+    let snapshot = AmbientOpsAgentSnapshot(
+      usage: usage,
+      identity: identity,
+      pet: tracker.snapshot(definition: definition, usage: usage)
+    )
+    try await client.push(snapshot, petAsset: asset)
+
+    let requests = await recorder.requests
+    XCTAssertEqual(requests.count, 2)
+    XCTAssertEqual(
+      requests[1].url?.absoluteString,
+      "https://ops.example.test/base/api/v1/agents/primary/pets/\(hash)")
+    XCTAssertEqual(requests[1].httpMethod, "PUT")
+    XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Authorization"), "Bearer test-token")
+    XCTAssertEqual(requests[1].value(forHTTPHeaderField: "Content-Type"), "image/webp")
+    XCTAssertEqual(requests[1].httpBody, assetData)
+  }
+
+  func testDoesNotUploadUnrequestedOrForeignAsset() async throws {
+    let identity = try AmbientOpsMachineIdentity(
+      machineID: "primary", machineName: "Primary", platform: "macOS")
+    let request = try AmbientOpsPushRequest(
+      endpoint: XCTUnwrap(URL(string: "https://ops.example.test")),
+      token: "test-token",
+      identity: identity
+    )
+    let assetData = webP(payload: Data("pet pixels".utf8))
+    let hash = SHA256.hash(data: assetData)
+      .map { String(format: "%02x", $0) }
+      .joined()
+    let asset = AmbientOpsPetAsset(
+      definition: try AmbientOpsPetDefinition(
+        id: "local-pet", displayName: "Local", spriteVersionNumber: 1, assetHash: hash),
+      data: assetData
+    )
+    let recorder = URLRequestRecorder()
+    let client = AmbientOpsPushClient(request: request) { urlRequest in
+      await recorder.append(urlRequest)
+      return (
+        Data(
+          #"{"missingPetAssets":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]}"#
+            .utf8),
+        HTTPURLResponse(
+          url: urlRequest.url!, statusCode: 202, httpVersion: nil, headerFields: nil)!
+      )
+    }
+    try await client.push(
+      AmbientOpsAgentSnapshot(usage: usageSnapshot(status: .ready), identity: identity),
+      petAsset: asset
+    )
+    let requestCount = await recorder.count
+    XCTAssertEqual(requestCount, 1)
+  }
+
+  func testRetriesSnapshotOnceAfterUploadManifestConflict() async throws {
+    let identity = try AmbientOpsMachineIdentity(
+      machineID: "primary", machineName: "Primary", platform: "macOS")
+    let request = try AmbientOpsPushRequest(
+      endpoint: XCTUnwrap(URL(string: "https://ops.example.test")),
+      token: "test-token",
+      identity: identity
+    )
+    let assetData = webP(payload: Data("pet pixels".utf8))
+    let hash = SHA256.hash(data: assetData)
+      .map { String(format: "%02x", $0) }
+      .joined()
+    let definition = try AmbientOpsPetDefinition(
+      id: "local-pet", displayName: "Local", spriteVersionNumber: 1, assetHash: hash)
+    let asset = AmbientOpsPetAsset(definition: definition, data: assetData)
+    let recorder = URLRequestRecorder()
+    let client = AmbientOpsPushClient(request: request) { urlRequest in
+      await recorder.append(urlRequest)
+      let requestCount = await recorder.count
+      let status =
+        urlRequest.httpMethod == "PUT"
+        ? (requestCount == 2 ? 409 : 201)
+        : 202
+      let data =
+        urlRequest.httpMethod == "PUT"
+        ? Data()
+        : Data(#"{"missingPetAssets":["\#(hash)"]}"#.utf8)
+      return (
+        data,
+        HTTPURLResponse(
+          url: urlRequest.url!, statusCode: status, httpVersion: nil, headerFields: nil)!
+      )
+    }
+
+    try await client.push(
+      AmbientOpsAgentSnapshot(usage: usageSnapshot(status: .ready), identity: identity),
+      petAsset: asset
+    )
+
+    let recordedRequests = await recorder.requests
+    let methods = recordedRequests.map(\.httpMethod)
+    XCTAssertEqual(methods, ["POST", "PUT", "POST", "PUT"])
+  }
+
+  private func webP(payload: Data) -> Data {
+    var data = Data("RIFF".utf8)
+    var size = UInt32(payload.count + 4).littleEndian
+    data.append(Data(bytes: &size, count: MemoryLayout<UInt32>.size))
+    data.append(Data("WEBP".utf8))
+    data.append(payload)
+    return data
   }
 
   private func usageSnapshot(
@@ -231,5 +381,17 @@ final class AmbientOpsPushTests: XCTestCase {
       malformedRelevantLines: 0,
       status: status
     )
+  }
+}
+
+private actor URLRequestRecorder {
+  private(set) var requests: [URLRequest] = []
+
+  var count: Int {
+    requests.count
+  }
+
+  func append(_ request: URLRequest) {
+    requests.append(request)
   }
 }

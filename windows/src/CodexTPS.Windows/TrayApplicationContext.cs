@@ -112,6 +112,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             await ambientOps.PushIfDueAsync(
                 lastSnapshot,
                 settings,
+                scanner.CodexHome,
                 forcePush,
                 cancellation.Token);
             dashboard.UpdateSnapshot(lastSnapshot, ambientOps.Connection);

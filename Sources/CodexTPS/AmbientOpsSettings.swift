@@ -44,31 +44,21 @@ enum AmbientOpsConnectionState: Equatable {
 }
 
 enum AmbientOpsPetChoice: String, CaseIterable, Identifiable {
-  case ledgerOwl = "ledger-owl"
+  case localCodex = "local-codex"
   case none
 
   var id: Self { self }
 
-  var label: String {
-    switch self {
-    case .ledgerOwl:
-      "Ledger Owl"
-    case .none:
-      "不显示"
-    }
+  init(savedValue: String?) {
+    self = savedValue == Self.none.rawValue ? .none : .localCodex
   }
 
-  var definition: AmbientOpsPetDefinition? {
+  var label: String {
     switch self {
-    case .ledgerOwl:
-      try? AmbientOpsPetDefinition(
-        id: rawValue,
-        displayName: "Ledger Owl",
-        spriteVersionNumber: 1,
-        assetHash: "783854af87d6ee8639843ca7812917e062345b0095d43f9be5ea2374a41ada6c"
-      )
+    case .localCodex:
+      "本机 Codex 宠物"
     case .none:
-      nil
+      "不显示"
     }
   }
 }

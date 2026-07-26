@@ -29,6 +29,7 @@ internal sealed class AmbientOpsCoordinator
     private AmbientOpsService? selectedService;
     private AmbientOpsServiceSelector? selector;
     private AmbientOpsAgentSnapshot? lastSuccessfulSnapshot;
+    private AmbientOpsPetAssetCatalog? petAssetCatalog;
     private DateTimeOffset? lastPush;
     private string configurationKey = string.Empty;
 
@@ -39,6 +40,7 @@ internal sealed class AmbientOpsCoordinator
     public async Task PushIfDueAsync(
         UsageSnapshot usage,
         AppSettings settings,
+        string codexHome,
         bool force,
         CancellationToken cancellationToken)
     {
@@ -48,7 +50,7 @@ internal sealed class AmbientOpsCoordinator
             return;
         }
 
-        ResetIfConfigurationChanged(settings);
+        ResetIfConfigurationChanged(settings, codexHome);
         Uri endpoint;
         string destination;
 
@@ -99,8 +101,11 @@ internal sealed class AmbientOpsCoordinator
             settings.MachineId,
             settings.MachineName,
             "Windows");
-        var pet = settings.PetEnabled
-            ? petTracker.Snapshot(AmbientOpsPetDefinition.LedgerOwl, usage)
+        var petAsset = settings.PetEnabled
+            ? petAssetCatalog!.CurrentAsset()
+            : null;
+        var pet = petAsset is not null
+            ? petTracker.Snapshot(petAsset.Definition, usage)
             : null;
         var payload = AmbientOpsAgentSnapshot.FromUsage(
             usage,
@@ -115,6 +120,7 @@ internal sealed class AmbientOpsCoordinator
                 payload,
                 identity,
                 settings.Token,
+                petAsset,
                 cancellationToken).ConfigureAwait(false);
         }
         catch (HttpRequestException error) when (
@@ -148,6 +154,7 @@ internal sealed class AmbientOpsCoordinator
                     payload,
                     identity,
                     settings.Token,
+                    petAsset,
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception fallbackError) when (
@@ -181,10 +188,12 @@ internal sealed class AmbientOpsCoordinator
         AmbientOpsAgentSnapshot payload,
         AmbientOpsMachineIdentity identity,
         string token,
+        AmbientOpsPetAsset? petAsset,
         CancellationToken cancellationToken)
     {
         SetStatus(AmbientOpsConnectionKind.Pushing, $"正在推送到 {endpoint.Host}", endpoint);
-        await pushClient.PushAsync(endpoint, token, identity, payload, cancellationToken)
+        await pushClient.PushAsync(
+            endpoint, token, identity, payload, petAsset, cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -202,13 +211,14 @@ internal sealed class AmbientOpsCoordinator
         SetStatus(AmbientOpsConnectionKind.Live, $"{destination} · 已连接", endpoint);
     }
 
-    private void ResetIfConfigurationChanged(AppSettings settings)
+    private void ResetIfConfigurationChanged(AppSettings settings, string codexHome)
     {
         var nextKey = string.Join('|',
             settings.AutoDiscover,
             settings.ManualUrl,
             settings.PreferredInstanceId,
-            settings.MachineId);
+            settings.MachineId,
+            codexHome);
         if (nextKey == configurationKey)
         {
             return;
@@ -217,6 +227,7 @@ internal sealed class AmbientOpsCoordinator
         selector = new AmbientOpsServiceSelector(settings.PreferredInstanceId);
         discoveredServices = [];
         selectedService = null;
+        petAssetCatalog = new AmbientOpsPetAssetCatalog(codexHome);
     }
 
     private void SetStatus(AmbientOpsConnectionKind kind, string message, Uri? endpoint = null) =>

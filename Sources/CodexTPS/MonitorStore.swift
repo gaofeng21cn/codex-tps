@@ -20,6 +20,7 @@ final class MonitorStore: ObservableObject {
   let sessionsURL: URL
 
   private let scanner: SessionScanner
+  private let ambientPetCatalog: AmbientOpsPetAssetCatalog
   private let ambientMachineID: String
   private let ambientDiscovery = AmbientOpsDiscovery()
   private var refreshLoop: Task<Void, Never>?
@@ -47,14 +48,14 @@ final class MonitorStore: ObservableObject {
       UserDefaults.standard.object(forKey: Self.ambientAutoDiscoverDefaultsKey) as? Bool ?? true
     ambientManualURL =
       UserDefaults.standard.string(forKey: Self.ambientManualURLDefaultsKey) ?? ""
-    ambientPet =
-      UserDefaults.standard.string(forKey: Self.ambientPetDefaultsKey)
-        .flatMap(AmbientOpsPetChoice.init(rawValue:)) ?? .ledgerOwl
+    ambientPet = AmbientOpsPetChoice(
+      savedValue: UserDefaults.standard.string(forKey: Self.ambientPetDefaultsKey))
     ambientMachineID =
       UserDefaults.standard.string(forKey: Self.ambientMachineIDDefaultsKey)
-        ?? AmbientOpsMachineIdentity.defaultLocalMachineID()
+      ?? AmbientOpsMachineIdentity.defaultLocalMachineID()
     UserDefaults.standard.set(ambientMachineID, forKey: Self.ambientMachineIDDefaultsKey)
     scanner = SessionScanner(codexHome: codexHome)
+    ambientPetCatalog = AmbientOpsPetAssetCatalog(codexHome: codexHome)
     sessionsURL = codexHome.appendingPathComponent("sessions", isDirectory: true)
     snapshot = .empty(at: Date(), status: .ready)
     refreshLaunchAtLoginStatus()
@@ -248,14 +249,16 @@ final class MonitorStore: ObservableObject {
       name = endpoint?.host ?? "Ambient Ops"
     }
     guard let endpoint, let token = AmbientOpsKeychain.token() else { return }
-    let pet = ambientPet.definition.map {
-      ambientPetTracker.snapshot(definition: $0, usage: usage)
-    }
+    let reportLocalPet = ambientPet == .localCodex
 
     ambientPushTask = Task { [weak self] in
       guard let self else { return }
       ambientConnection = .pushing(name: name, endpoint: endpoint)
       do {
+        let petAsset = reportLocalPet ? await ambientPetCatalog.currentAsset() : nil
+        let pet = petAsset.map {
+          ambientPetTracker.snapshot(definition: $0.definition, usage: usage)
+        }
         let identity = try AmbientOpsMachineIdentity.localMachine(machineID: ambientMachineID)
         let request = try AmbientOpsPushRequest(
           endpoint: endpoint,
@@ -268,7 +271,7 @@ final class MonitorStore: ObservableObject {
           fallback: lastAmbientSnapshot,
           pet: pet
         )
-        try await AmbientOpsPushClient(request: request).push(payload)
+        try await AmbientOpsPushClient(request: request).push(payload, petAsset: petAsset)
         if usage.status == .ready {
           lastAmbientSnapshot = payload
         }
