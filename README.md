@@ -166,8 +166,12 @@ CODEX_HOME=/path/to/codex-home swift run codex-tps-snapshot --json
 The menu bar app can discover `_ambient-ops._tcp.local` automatically. Its
 collapsed Ambient Ops settings let you disable integration, switch to a manual
 HTTP(S) URL, rediscover the server, and choose the pet reported for this Mac.
-The push token stays in the macOS Keychain under
-`cn.gaofeng.ambient-ops.agent-push`; it is not stored in app preferences.
+With Ambient Ops v0.1.4 or newer, Codex TPS v0.2.10 automatically creates a
+per-device P-256 key in the macOS Keychain, opens the local approval page, and
+starts signed pushes after the user verifies the six-digit code. The private
+key never leaves the Mac, and no shared push token needs to be copied. An
+existing token under `cn.gaofeng.ambient-ops.agent-push` remains supported for
+older deployments.
 
 The optional headless agent also discovers Ambient Ops automatically when
 `CODEX_TPS_AMBIENT_URL` is absent. Set
@@ -312,14 +316,15 @@ cd codex-tps
 ### Ambient Ops
 
 菜单栏 App 可以自动发现 `_ambient-ops._tcp.local`。折叠设置中可以关闭集成、
-改用手动 HTTP(S) 地址、重新发现服务端，以及选择本机上报的宠物。推送令牌保存
-在 macOS Keychain 的 `cn.gaofeng.ambient-ops.agent-push` 服务中，不会写入
-App 偏好设置。
+改用手动 HTTP(S) 地址、重新发现服务端，以及选择本机上报的宠物。Codex TPS
+`v0.2.10+` 与 Ambient Ops `v0.1.4+` 会自动在 macOS Keychain 生成每台设备
+独立的 P-256 私钥，自动打开局域网批准页；核对六位配对码并批准后即可开始签名
+推送，不需要复制共享令牌。私钥不会离开本机。已有
+`cn.gaofeng.ambient-ops.agent-push` 令牌仍作为旧部署的兼容路径。
 
-Windows `v0.2.9+` 与 Ambient Ops `v0.1.4+` 默认使用一次批准的设备配对：
-自动发现后打开批准页，核对六位配对码并点击允许即可。Windows 私钥只以当前用户
-DPAPI 密文保存在 `settings.json`，NAS 只保存公钥；无需复制
-`agent_push_token`。设置中的兼容令牌只用于旧版 Ambient Ops。
+Windows `v0.2.9+` 使用相同的一次批准配对协议。Windows 私钥只以当前用户
+DPAPI 密文保存在 `settings.json`；macOS 私钥保存在 Keychain；NAS 两种情况
+都只保存公钥。无需复制 `agent_push_token`。
 
 headless agent 在没有设置 `CODEX_TPS_AMBIENT_URL` 时同样会自动发现。可用
 `CODEX_TPS_AMBIENT_INSTANCE_ID` 指定首选实例；首选端点推送失败后，会尝试同一

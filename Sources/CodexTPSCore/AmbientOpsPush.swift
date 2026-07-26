@@ -229,7 +229,7 @@ public struct AmbientOpsPushRequest: Sendable {
     return request
   }
 
-  fileprivate static func encoder() -> JSONEncoder {
+  static func encoder() -> JSONEncoder {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .custom { date, encoder in
       var container = encoder.singleValueContainer()
@@ -242,11 +242,29 @@ public struct AmbientOpsPushRequest: Sendable {
 }
 
 public struct AmbientOpsPushClient: Sendable {
-  private let request: AmbientOpsPushRequest
+  private let snapshotRequest: @Sendable (AmbientOpsAgentSnapshot) throws -> URLRequest
+  private let petAssetRequest: @Sendable (AmbientOpsPetAsset) throws -> URLRequest
   private let transport: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
   public init(request: AmbientOpsPushRequest, session: URLSession = .shared) {
-    self.request = request
+    snapshotRequest = { snapshot in
+      try request.urlRequest(snapshot: snapshot)
+    }
+    petAssetRequest = { asset in
+      request.petAssetUploadRequest(asset: asset)
+    }
+    transport = { request in
+      try await session.data(for: request)
+    }
+  }
+
+  public init(signedRequest: AmbientOpsSignedPushRequest, session: URLSession = .shared) {
+    snapshotRequest = { snapshot in
+      try signedRequest.urlRequest(snapshot: snapshot)
+    }
+    petAssetRequest = { asset in
+      try signedRequest.petAssetUploadRequest(asset: asset)
+    }
     transport = { request in
       try await session.data(for: request)
     }
@@ -256,7 +274,25 @@ public struct AmbientOpsPushClient: Sendable {
     request: AmbientOpsPushRequest,
     transport: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
   ) {
-    self.request = request
+    snapshotRequest = { snapshot in
+      try request.urlRequest(snapshot: snapshot)
+    }
+    petAssetRequest = { asset in
+      request.petAssetUploadRequest(asset: asset)
+    }
+    self.transport = transport
+  }
+
+  init(
+    signedRequest: AmbientOpsSignedPushRequest,
+    transport: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
+  ) {
+    snapshotRequest = { snapshot in
+      try signedRequest.urlRequest(snapshot: snapshot)
+    }
+    petAssetRequest = { asset in
+      try signedRequest.petAssetUploadRequest(asset: asset)
+    }
     self.transport = transport
   }
 
@@ -273,7 +309,7 @@ public struct AmbientOpsPushClient: Sendable {
     retryUploadConflict: Bool
   ) async throws {
     let (responseData, response) = try await transport(
-      request.urlRequest(snapshot: snapshot))
+      snapshotRequest(snapshot))
     guard let httpResponse = response as? HTTPURLResponse else {
       throw AmbientOpsPushError.invalidResponse
     }
@@ -299,7 +335,7 @@ public struct AmbientOpsPushClient: Sendable {
     else { return }
 
     let (_, uploadResponse) = try await transport(
-      request.petAssetUploadRequest(asset: petAsset))
+      petAssetRequest(petAsset))
     guard let uploadHTTPResponse = uploadResponse as? HTTPURLResponse else {
       throw AmbientOpsPushError.invalidResponse
     }

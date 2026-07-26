@@ -45,17 +45,24 @@ checking never silently installs or terminates the app.
 ```text
 rolling aggregate snapshot
         -> explicit field allowlist
-        -> bearer-authenticated POST
+        -> mDNS discovery
+        -> one-time visible pairing approval
+        -> per-device P-256 signed POST
         -> user-configured Ambient Ops server
 ```
 
-The agent is opt-in and requires an explicit server URL and token. Its payload
-contains only aggregate token totals/rates, request counts, active-session
-count, machine labels, collection status, and timestamps. Session identifiers,
-paths, prompts, responses, and tool content never cross the process boundary.
-Collection failures retain the last successful aggregate values and mark the
-snapshot as an error; transport failures retry without affecting local
-collection.
+The menu bar app discovers compatible servers and uses a private P-256 device
+key stored in the macOS Keychain. The server receives only the public key after
+the user confirms a six-digit code on the local approval page. Each push signs
+the method, path, timestamp, nonce, and body hash. Existing bearer tokens remain
+a compatibility path, and the headless source agent still requires one.
+
+The payload contains only aggregate token totals/rates, request counts,
+active-session count, machine labels, collection status, and timestamps.
+Session identifiers, paths, prompts, responses, and tool content never cross
+the process boundary. Collection failures retain the last successful aggregate
+values and mark the snapshot as an error; transport failures retry without
+affecting local collection.
 
 ## Release trust flow
 

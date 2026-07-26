@@ -9,6 +9,7 @@ final class AmbientOpsDiscoveryTests: XCTestCase {
       fromTXTRecord: [
         "id": Data("Home-Ops.1".utf8),
         "name": Data("Gaofeng Home".utf8),
+        "pairing": Data("1".utf8),
         "path": Data(" /display/pet ".utf8),
         "protocol": Data("1".utf8),
       ])
@@ -25,6 +26,7 @@ final class AmbientOpsDiscoveryTests: XCTestCase {
     XCTAssertEqual(service.name, "Gaofeng Home")
     XCTAssertEqual(service.endpoint.absoluteString, "http://ambient-ops.local:8791")
     XCTAssertEqual(service.displayPath, "/display/pet")
+    XCTAssertTrue(service.supportsPairing)
     XCTAssertNil(
       AmbientOpsDiscoveryContract.service(
         serviceName: "Future Ops",
