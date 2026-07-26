@@ -15,7 +15,11 @@ struct CodexTPSAgentCommand {
     }
 
     let configuration = try AgentConfiguration(environment: ProcessInfo.processInfo.environment)
-    let scanner = SessionScanner()
+    let scanner = SessionScanner(codexHome: configuration.codexHome)
+    let petCatalog = AmbientOpsPetAssetCatalog(
+      codexHome: configuration.codexHome,
+      preferredPetID: configuration.preferredPetID
+    )
     var lastSuccessfulSnapshot: AmbientOpsAgentSnapshot?
     var petTracker = AmbientOpsPetTracker()
     var consecutiveFailures = 0
@@ -26,8 +30,10 @@ struct CodexTPSAgentCommand {
 
     repeat {
       let usage = await scanner.refresh()
-      let pet = configuration.petDefinition.map {
-        petTracker.snapshot(definition: $0, usage: usage)
+      let petAsset =
+        configuration.petEnabled ? await petCatalog.currentAsset() : nil
+      let pet = petAsset.map {
+        petTracker.snapshot(definition: $0.definition, usage: usage)
       }
       let snapshot = AmbientOpsAgentSnapshot(
         usage: usage,
@@ -44,7 +50,8 @@ struct CodexTPSAgentCommand {
           try await Self.push(
             snapshot,
             to: endpoint,
-            configuration: configuration
+            configuration: configuration,
+            petAsset: petAsset
           )
         } else {
           if selectedService == nil {
@@ -61,7 +68,8 @@ struct CodexTPSAgentCommand {
             try await Self.push(
               snapshot,
               to: service.endpoint,
-              configuration: configuration
+              configuration: configuration,
+              petAsset: petAsset
             )
           } catch {
             selector.recordPushFailure(for: service)
@@ -73,7 +81,8 @@ struct CodexTPSAgentCommand {
             try await Self.push(
               snapshot,
               to: fallback.endpoint,
-              configuration: configuration
+              configuration: configuration,
+              petAsset: petAsset
             )
           }
         }
@@ -103,14 +112,15 @@ struct CodexTPSAgentCommand {
   private static func push(
     _ snapshot: AmbientOpsAgentSnapshot,
     to endpoint: URL,
-    configuration: AgentConfiguration
+    configuration: AgentConfiguration,
+    petAsset: AmbientOpsPetAsset?
   ) async throws {
     let request = try AmbientOpsPushRequest(
       endpoint: endpoint,
       token: configuration.token,
       identity: configuration.identity
     )
-    try await AmbientOpsPushClient(request: request).push(snapshot)
+    try await AmbientOpsPushClient(request: request).push(snapshot, petAsset: petAsset)
   }
 
   @MainActor
@@ -145,10 +155,7 @@ struct CodexTPSAgentCommand {
       CODEX_TPS_MACHINE_NAME      Display name (default: localized hostname)
       CODEX_TPS_PLATFORM          Platform label (default: macOS)
       CODEX_TPS_PUSH_INTERVAL     Push interval in seconds (default: 10)
-      CODEX_TPS_PET_ID            Pet ID (default: ledger-owl; use none to disable)
-      CODEX_TPS_PET_NAME          Pet display name
-      CODEX_TPS_PET_ASSET_HASH    Pet spritesheet SHA-256
-      CODEX_TPS_PET_ASSET_VERSION Pet sprite protocol version (default: 1)
+      CODEX_TPS_PET_ID            Preferred local pet ID; use none to disable
       CODEX_HOME                  Alternate Codex home
     """
 }
@@ -159,7 +166,9 @@ private struct AgentConfiguration {
   let token: String
   let identity: AmbientOpsMachineIdentity
   let intervalSeconds: Double
-  let petDefinition: AmbientOpsPetDefinition?
+  let codexHome: URL
+  let petEnabled: Bool
+  let preferredPetID: String?
 
   init(environment: [String: String]) throws {
     if let endpointValue = environment["CODEX_TPS_AMBIENT_URL"], !endpointValue.isEmpty {
@@ -210,20 +219,16 @@ private struct AgentConfiguration {
     }
     intervalSeconds = interval
 
-    let petID = environment["CODEX_TPS_PET_ID"] ?? "ledger-owl"
+    codexHome = SessionScanner.defaultCodexHome(environment: environment)
+    let petID = environment["CODEX_TPS_PET_ID"]?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+      .lowercased()
     if petID == "none" {
-      petDefinition = nil
+      petEnabled = false
+      preferredPetID = nil
     } else {
-      let defaultHash =
-        petID == "ledger-owl"
-        ? "783854af87d6ee8639843ca7812917e062345b0095d43f9be5ea2374a41ada6c"
-        : ""
-      petDefinition = try AmbientOpsPetDefinition(
-        id: petID,
-        displayName: environment["CODEX_TPS_PET_NAME"] ?? "Ledger Owl",
-        spriteVersionNumber: Int(environment["CODEX_TPS_PET_ASSET_VERSION"] ?? "1") ?? 1,
-        assetHash: environment["CODEX_TPS_PET_ASSET_HASH"] ?? defaultHash
-      )
+      petEnabled = true
+      preferredPetID = petID
     }
   }
 

@@ -297,6 +297,42 @@ public sealed class AmbientOpsPushClient
         AmbientOpsAgentSnapshot snapshot,
         CancellationToken cancellationToken = default)
     {
+        await PushAsync(
+            endpoint,
+            token,
+            identity,
+            snapshot,
+            petAsset: null,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task PushAsync(
+        Uri endpoint,
+        string token,
+        AmbientOpsMachineIdentity identity,
+        AmbientOpsAgentSnapshot snapshot,
+        AmbientOpsPetAsset? petAsset,
+        CancellationToken cancellationToken = default)
+    {
+        await PushAsync(
+            endpoint,
+            token,
+            identity,
+            snapshot,
+            petAsset,
+            retryUploadConflict: true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task PushAsync(
+        Uri endpoint,
+        string token,
+        AmbientOpsMachineIdentity identity,
+        AmbientOpsAgentSnapshot snapshot,
+        AmbientOpsPetAsset? petAsset,
+        bool retryUploadConflict,
+        CancellationToken cancellationToken)
+    {
         using var request = CreateRequest(endpoint, token, identity, snapshot);
         using var response = await httpClient.SendAsync(request, cancellationToken)
             .ConfigureAwait(false);
@@ -307,5 +343,78 @@ public sealed class AmbientOpsPushClient
                 inner: null,
                 response.StatusCode);
         }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken)
+            .ConfigureAwait(false);
+        AmbientOpsPushResponse accepted;
+        try
+        {
+            accepted = string.IsNullOrWhiteSpace(body)
+                ? new AmbientOpsPushResponse()
+                : JsonSerializer.Deserialize<AmbientOpsPushResponse>(body, SerializerOptions)
+                    ?? throw new JsonException("Ambient Ops returned an empty response.");
+        }
+        catch (JsonException error)
+        {
+            throw new HttpRequestException("Ambient Ops returned an invalid response.", error);
+        }
+
+        if (petAsset is null ||
+            !accepted.MissingPetAssets.Contains(
+                petAsset.Definition.AssetHash,
+                StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        using var uploadRequest = CreatePetAssetRequest(
+            endpoint,
+            token,
+            identity,
+            petAsset);
+        using var uploadResponse = await httpClient.SendAsync(uploadRequest, cancellationToken)
+            .ConfigureAwait(false);
+        if ((int)uploadResponse.StatusCode == 409 && retryUploadConflict)
+        {
+            await PushAsync(
+                endpoint,
+                token,
+                identity,
+                snapshot,
+                petAsset,
+                retryUploadConflict: false,
+                cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        if ((int)uploadResponse.StatusCode is not (201 or 204))
+        {
+            throw new HttpRequestException(
+                $"Ambient Ops returned HTTP {(int)uploadResponse.StatusCode}.");
+        }
+    }
+
+    internal HttpRequestMessage CreatePetAssetRequest(
+        Uri endpoint,
+        string token,
+        AmbientOpsMachineIdentity identity,
+        AmbientOpsPetAsset asset)
+    {
+        var url = new Uri(
+            endpoint.AbsoluteUri.TrimEnd('/') +
+            $"/api/v1/agents/{Uri.EscapeDataString(identity.MachineId)}/pets/" +
+            asset.Definition.AssetHash);
+        var content = new ByteArrayContent(asset.Data.ToArray());
+        content.Headers.ContentType = new MediaTypeHeaderValue("image/webp");
+        var request = new HttpRequestMessage(HttpMethod.Put, url)
+        {
+            Content = content,
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Trim());
+        return request;
+    }
+
+    private sealed record AmbientOpsPushResponse
+    {
+        public string[] MissingPetAssets { get; init; } = [];
     }
 }

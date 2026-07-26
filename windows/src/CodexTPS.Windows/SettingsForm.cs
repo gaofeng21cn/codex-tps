@@ -137,7 +137,7 @@ internal sealed class SettingsForm : RoundedPopupForm
         AddSection("本机身份");
         AddField("Machine ID", machineId);
         AddField("Machine name", machineName);
-        AddToggle("显示 Ledger Owl", petEnabled);
+        AddToggle("同步本机 Codex 宠物", petEnabled);
         AddSeparator();
 
         AddSection("系统");
@@ -149,7 +149,7 @@ internal sealed class SettingsForm : RoundedPopupForm
             ForeColor = Secondary,
             BackColor = Background,
             Font = new Font("Microsoft YaHei UI", 8.5f),
-            Text = "推送令牌来自 NAS 部署目录 secrets/agent_push_token。保存后使用 Windows DPAPI 加密，仅发送聚合指标。",
+            Text = "推送令牌来自 NAS 部署目录 secrets/agent_push_token。保存后使用 Windows DPAPI 加密，仅发送聚合指标、宠物元数据和本机 WebP 图集。",
             Margin = new Padding(0, 10, 0, 18),
         });
 

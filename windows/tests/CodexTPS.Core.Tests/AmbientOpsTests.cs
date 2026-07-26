@@ -96,6 +96,89 @@ public sealed class AmbientOpsTests
         Assert.DoesNotContain("prompt", json, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public async Task UploadsOnlyPetAssetRequestedBySnapshotResponse()
+    {
+        var temporary = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            PetAssetTests.WritePetForUpload(temporary);
+            var asset = Assert.IsType<AmbientOpsPetAsset>(
+                new AmbientOpsPetAssetCatalog(temporary).CurrentAsset());
+            var handler = new PetUploadHandler(asset.Definition.AssetHash);
+            var client = new AmbientOpsPushClient(new HttpClient(handler));
+            var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");
+            var usage = Usage();
+            var pet = new AmbientOpsPetTracker().Snapshot(asset.Definition, usage);
+
+            await client.PushAsync(
+                new Uri("https://ops.example.test/base"),
+                "test-token",
+                identity,
+                AmbientOpsAgentSnapshot.FromUsage(usage, identity, pet: pet),
+                asset);
+
+            Assert.Equal(2, handler.Requests.Count);
+            Assert.Equal(HttpMethod.Put, handler.Requests[1].Method);
+            Assert.Equal(
+                $"https://ops.example.test/base/api/v1/agents/windows-pc/pets/{asset.Definition.AssetHash}",
+                handler.Requests[1].Url);
+            Assert.Equal("Bearer test-token", handler.Requests[1].Authorization);
+            Assert.Equal("image/webp", handler.Requests[1].ContentType);
+            Assert.Equal(asset.Data.ToArray(), handler.Requests[1].Body);
+        }
+        finally
+        {
+            Directory.Delete(temporary, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DoesNotUploadForeignMissingHash()
+    {
+        var handler = new PetUploadHandler(new string('a', 64));
+        var client = new AmbientOpsPushClient(new HttpClient(handler));
+        var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");
+
+        await client.PushAsync(
+            new Uri("https://ops.example.test"),
+            "test-token",
+            identity,
+            AmbientOpsAgentSnapshot.FromUsage(Usage(), identity));
+
+        Assert.Single(handler.Requests);
+    }
+
+    [Fact]
+    public async Task RetriesSnapshotOnceAfterUploadManifestConflict()
+    {
+        var temporary = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        try
+        {
+            PetAssetTests.WritePetForUpload(temporary);
+            var asset = Assert.IsType<AmbientOpsPetAsset>(
+                new AmbientOpsPetAssetCatalog(temporary).CurrentAsset());
+            var handler = new PetUploadHandler(asset.Definition.AssetHash, conflictOnce: true);
+            var client = new AmbientOpsPushClient(new HttpClient(handler));
+            var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");
+
+            await client.PushAsync(
+                new Uri("https://ops.example.test"),
+                "test-token",
+                identity,
+                AmbientOpsAgentSnapshot.FromUsage(Usage(), identity),
+                asset);
+
+            Assert.Equal(
+                [HttpMethod.Post, HttpMethod.Put, HttpMethod.Post, HttpMethod.Put],
+                handler.Requests.Select(item => item.Method));
+        }
+        finally
+        {
+            Directory.Delete(temporary, recursive: true);
+        }
+    }
+
     private static UsageSnapshot Usage()
     {
         var oneMinute = new WindowMetrics(60, 2, 2, 10, 8, 5, 2, 1, 0.625, 600);
@@ -108,5 +191,45 @@ public sealed class AmbientOpsTests
             3,
             0,
             CollectionStatus.Ready);
+    }
+
+    private sealed record RecordedRequest(
+        HttpMethod Method,
+        string Url,
+        string? Authorization,
+        string? ContentType,
+        byte[] Body);
+
+    private sealed class PetUploadHandler(
+        string missingHash,
+        bool conflictOnce = false) : HttpMessageHandler
+    {
+        public List<RecordedRequest> Requests { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            var body = request.Content is null
+                ? []
+                : await request.Content.ReadAsByteArrayAsync(cancellationToken);
+            Requests.Add(new RecordedRequest(
+                request.Method,
+                request.RequestUri!.AbsoluteUri,
+                request.Headers.Authorization?.ToString(),
+                request.Content?.Headers.ContentType?.MediaType,
+                body));
+
+            return request.Method == HttpMethod.Put
+                ? new HttpResponseMessage(
+                    conflictOnce && Requests.Count == 2
+                        ? System.Net.HttpStatusCode.Conflict
+                        : System.Net.HttpStatusCode.Created)
+                : new HttpResponseMessage(System.Net.HttpStatusCode.Accepted)
+                {
+                    Content = new StringContent(
+                        $$"""{"accepted":true,"missingPetAssets":["{{missingHash}}"]}"""),
+                };
+        }
     }
 }

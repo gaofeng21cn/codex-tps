@@ -211,7 +211,25 @@ public struct AmbientOpsPushRequest: Sendable {
     return request
   }
 
-  private static func encoder() -> JSONEncoder {
+  func petAssetUploadRequest(asset: AmbientOpsPetAsset) -> URLRequest {
+    let url =
+      endpoint
+      .appendingPathComponent("api")
+      .appendingPathComponent("v1")
+      .appendingPathComponent("agents")
+      .appendingPathComponent(identity.machineID)
+      .appendingPathComponent("pets")
+      .appendingPathComponent(asset.definition.assetHash)
+    var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData)
+    request.httpMethod = "PUT"
+    request.timeoutInterval = 20
+    request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+    request.setValue("image/webp", forHTTPHeaderField: "Content-Type")
+    request.httpBody = asset.data
+    return request
+  }
+
+  fileprivate static func encoder() -> JSONEncoder {
     let encoder = JSONEncoder()
     encoder.dateEncodingStrategy = .custom { date, encoder in
       var container = encoder.singleValueContainer()
@@ -225,32 +243,86 @@ public struct AmbientOpsPushRequest: Sendable {
 
 public struct AmbientOpsPushClient: Sendable {
   private let request: AmbientOpsPushRequest
-  private let transport: @Sendable (URLRequest) async throws -> URLResponse
+  private let transport: @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
   public init(request: AmbientOpsPushRequest, session: URLSession = .shared) {
     self.request = request
     transport = { request in
-      let (_, response) = try await session.data(for: request)
-      return response
+      try await session.data(for: request)
     }
   }
 
   init(
     request: AmbientOpsPushRequest,
-    transport: @escaping @Sendable (URLRequest) async throws -> URLResponse
+    transport: @escaping @Sendable (URLRequest) async throws -> (Data, URLResponse)
   ) {
     self.request = request
     self.transport = transport
   }
 
-  public func push(_ snapshot: AmbientOpsAgentSnapshot) async throws {
-    let response = try await transport(request.urlRequest(snapshot: snapshot))
+  public func push(
+    _ snapshot: AmbientOpsAgentSnapshot,
+    petAsset: AmbientOpsPetAsset? = nil
+  ) async throws {
+    try await push(snapshot, petAsset: petAsset, retryUploadConflict: true)
+  }
+
+  private func push(
+    _ snapshot: AmbientOpsAgentSnapshot,
+    petAsset: AmbientOpsPetAsset?,
+    retryUploadConflict: Bool
+  ) async throws {
+    let (responseData, response) = try await transport(
+      request.urlRequest(snapshot: snapshot))
     guard let httpResponse = response as? HTTPURLResponse else {
       throw AmbientOpsPushError.invalidResponse
     }
     guard httpResponse.statusCode == 202 else {
       throw AmbientOpsPushError.server(httpResponse.statusCode)
     }
+
+    let missingAssets: [String]
+    if responseData.isEmpty {
+      missingAssets = []
+    } else {
+      do {
+        missingAssets = try JSONDecoder().decode(
+          AmbientOpsSnapshotResponse.self, from: responseData
+        ).missingPetAssets
+      } catch {
+        throw AmbientOpsPushError.invalidResponse
+      }
+    }
+    guard
+      let petAsset,
+      missingAssets.contains(petAsset.definition.assetHash)
+    else { return }
+
+    let (_, uploadResponse) = try await transport(
+      request.petAssetUploadRequest(asset: petAsset))
+    guard let uploadHTTPResponse = uploadResponse as? HTTPURLResponse else {
+      throw AmbientOpsPushError.invalidResponse
+    }
+    if uploadHTTPResponse.statusCode == 409, retryUploadConflict {
+      try await push(snapshot, petAsset: petAsset, retryUploadConflict: false)
+      return
+    }
+    guard uploadHTTPResponse.statusCode == 201 || uploadHTTPResponse.statusCode == 204 else {
+      throw AmbientOpsPushError.server(uploadHTTPResponse.statusCode)
+    }
+  }
+}
+
+private struct AmbientOpsSnapshotResponse: Decodable {
+  let missingPetAssets: [String]
+
+  private enum CodingKeys: String, CodingKey {
+    case missingPetAssets
+  }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    missingPetAssets = try container.decodeIfPresent([String].self, forKey: .missingPetAssets) ?? []
   }
 }
 
