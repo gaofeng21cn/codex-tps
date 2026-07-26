@@ -19,6 +19,8 @@ $checksum = "$archive.sha256"
 
 dotnet restore $solution --locked-mode --nologo
 if ($LASTEXITCODE -ne 0) { throw "Locked dependency restore failed." }
+dotnet restore $appProject -r $Runtime --locked-mode --nologo
+if ($LASTEXITCODE -ne 0) { throw "Locked Windows runtime restore failed." }
 
 if (-not $SkipTests) {
     dotnet test $testProject -c $Configuration --no-restore --nologo
