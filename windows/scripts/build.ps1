@@ -3,6 +3,7 @@ param(
     [string]$Runtime = "win-x64",
     [ValidateSet("Debug", "Release")]
     [string]$Configuration = "Release",
+    [string]$Version = "0.2.5",
     [switch]$SkipTests
 )
 
@@ -16,6 +17,10 @@ $distRoot = Join-Path $windowsRoot "dist"
 $publishRoot = Join-Path $distRoot $Runtime
 $archive = Join-Path $distRoot "Codex-TPS-Windows-$Runtime.zip"
 $checksum = "$archive.sha256"
+
+if ($Version -notmatch '^\d+\.\d+\.\d+$') {
+    throw "Version must use MAJOR.MINOR.PATCH format."
+}
 
 dotnet restore $solution --locked-mode --nologo
 if ($LASTEXITCODE -ne 0) { throw "Locked dependency restore failed." }
@@ -42,6 +47,9 @@ dotnet publish $appProject `
     -p:IncludeNativeLibrariesForSelfExtract=true `
     -p:DebugType=None `
     -p:DebugSymbols=false `
+    -p:Version=$Version `
+    -p:FileVersion="$Version.0" `
+    -p:AssemblyVersion="$Version.0" `
     -o $publishRoot
 if ($LASTEXITCODE -ne 0) { throw "Windows publish failed." }
 
@@ -50,6 +58,7 @@ if (-not (Test-Path (Join-Path $publishRoot "CodexTPS.exe"))) {
 }
 Copy-Item (Join-Path $repositoryRoot "LICENSE") (Join-Path $publishRoot "LICENSE.txt")
 Copy-Item (Join-Path $windowsRoot "THIRD-PARTY-NOTICES.md") $publishRoot
+Copy-Item (Join-Path $windowsRoot "src/CodexTPS.Windows/app.ico") $publishRoot
 if (Test-Path $archive) { Remove-Item -Force $archive }
 if (Test-Path $checksum) { Remove-Item -Force $checksum }
 Compress-Archive -Path (Join-Path $publishRoot "*") -DestinationPath $archive -CompressionLevel Optimal

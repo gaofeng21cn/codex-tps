@@ -35,6 +35,39 @@ records are not decoded or retained. Ambient Ops receives only:
 Session IDs, file paths, prompts, responses and tool content are never included
 in the network payload. The app contains no analytics or account login.
 
+## Install the release
+
+Download these two files from the
+[latest GitHub Release](https://github.com/gaofeng21cn/codex-tps/releases/latest):
+
+```text
+Codex-TPS-Windows-win-x64-Setup.exe
+Codex-TPS-Windows-win-x64-Setup.exe.sha256
+```
+
+Verify the installer in PowerShell, then open it:
+
+```powershell
+$installer = ".\Codex-TPS-Windows-win-x64-Setup.exe"
+$expected = ((Get-Content "$installer.sha256" -Raw).Trim() -split "\s+")[0]
+$actual = (Get-FileHash -Algorithm SHA256 $installer).Hash
+if ($expected -ne $actual) { throw "Installer checksum mismatch" }
+Start-Process $installer -Wait
+```
+
+The standard installer is self-contained and does not require a separate .NET
+runtime. It installs for the current user under
+`%LOCALAPPDATA%\Programs\Codex TPS`, adds a Start-menu shortcut, supports
+in-place upgrades, and registers a normal Windows uninstaller. Uninstalling the
+app preserves `%LOCALAPPDATA%\Codex TPS\settings.json`; it removes an enabled
+Codex TPS login-startup registry value so Windows does not retain a dead path.
+
+The Windows installer is not yet Authenticode-signed because this repository
+does not have a Windows code-signing certificate. Windows can therefore show
+an unknown-publisher or SmartScreen warning even when the published SHA-256
+matches. The GitHub Release, checksum, and CI receipts prove repository
+provenance but do not replace Authenticode trust or SmartScreen reputation.
+
 ## Build
 
 Install the .NET 8 SDK and PowerShell 7, then run from the repository root:
@@ -51,6 +84,19 @@ windows/dist/Codex-TPS-Windows-win-x64.zip
 windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
 ```
 
+To build the standard installer, also install Inno Setup 6 and run:
+
+```powershell
+pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.5
+```
+
+This additionally creates:
+
+```text
+windows/dist/Codex-TPS-Windows-win-x64-Setup.exe
+windows/dist/Codex-TPS-Windows-win-x64-Setup.exe.sha256
+```
+
 The GitHub `CI` workflow builds `win-x64` on a real Windows runner and uploads
 the same ZIP/checksum pair. CI artifacts are unsigned development builds; they
 are not a Windows release or SmartScreen reputation proof.
@@ -59,7 +105,7 @@ The first productized target is `win-x64`. Windows on Arm can run it through
 the operating system's x64 emulation; a native Arm64 artifact is not yet a
 validated target.
 
-## Install
+## Install the portable archive
 
 Exit an existing tray process, then install the built archive for the current
 user:
@@ -69,10 +115,10 @@ pwsh ./windows/scripts/install.ps1 `
   -ArchivePath ./windows/dist/Codex-TPS-Windows-win-x64.zip
 ```
 
-The installer stages and verifies the archive before replacing
+The PowerShell installer stages and verifies the archive before replacing
 `%LOCALAPPDATA%\Programs\Codex TPS`, restoring the previous directory if the
 replacement fails. The sibling `.sha256` file is mandatory and checked before
-extraction. The installer does not enable startup automatically; use the
+extraction. Neither installation route enables startup automatically; use the
 checkbox in Settings.
 
 ## Native Windows and WSL sessions

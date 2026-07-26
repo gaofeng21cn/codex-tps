@@ -54,11 +54,17 @@ Codex TPS does not need an API key of its own.
 
 The repository also contains a native .NET 8 WinForms tray implementation for
 Windows 11. It reads `%USERPROFILE%\.codex\sessions`, supports an explicit or
-WSL UNC `CODEX_HOME`, stores the Ambient Ops token with Windows DPAPI, manages
-optional per-user startup, and publishes a self-contained `win-x64` CI artifact.
-Build, install and current validation boundaries are documented in
-[`windows/README.md`](windows/README.md). Windows artifacts are currently
-unsigned development builds and are not part of the signed macOS release.
+WSL UNC `CODEX_HOME`, stores the Ambient Ops token with Windows DPAPI, and
+manages optional per-user startup. Download the standard current-user installer
+from the latest release:
+
+[`Codex-TPS-Windows-win-x64-Setup.exe`](https://github.com/gaofeng21cn/codex-tps/releases/latest/download/Codex-TPS-Windows-win-x64-Setup.exe)
+
+Build, checksum verification, portable installation and current qualification
+boundaries are documented in [`windows/README.md`](windows/README.md). The
+Windows installer is not yet Authenticode-signed and may show an
+unknown-publisher warning; the macOS DMG remains Developer ID signed and
+notarized.
 
 ### Quick install
 
@@ -247,9 +253,13 @@ Codex 在一次模型请求完成后才写入 token 用量，它反映的是完�
 仓库同时提供基于 .NET 8 WinForms 的 Windows 11 原生托盘版，默认读取
 `%USERPROFILE%\.codex\sessions`，也支持显式或 WSL UNC `CODEX_HOME`；
 Ambient Ops token 使用 Windows DPAPI 加密保存，并可配置当前用户登录后启动。
-构建、安装和仍需 Windows 真机验证的边界见
-[`windows/README.md`](windows/README.md)。当前 Windows 制品是未签名的开发构建，
-不属于已签名的 macOS release。
+可从最新 Release 直接下载标准当前用户安装器：
+
+[`Codex-TPS-Windows-win-x64-Setup.exe`](https://github.com/gaofeng21cn/codex-tps/releases/latest/download/Codex-TPS-Windows-win-x64-Setup.exe)
+
+构建、SHA-256 校验、便携版安装和仍需 Windows 真机验证的边界见
+[`windows/README.md`](windows/README.md)。Windows 安装器目前没有
+Authenticode 签名，可能显示未知发布者；macOS DMG 仍保持 Developer ID 签名和公证。
 
 ### 一键安装
 

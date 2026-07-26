@@ -6,14 +6,14 @@ on:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: codex-tps-release
   cancel-in-progress: false
 
 jobs:
-  release:
+  macos:
     runs-on: macos-26
     environment: release
     env:
@@ -89,17 +89,12 @@ jobs:
           ./scripts/notarize-dmg.sh
           ./scripts/verify-release.sh
 
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh release create "$GITHUB_REF_NAME" \
-            dist/Codex-TPS.dmg \
-            dist/Codex-TPS.dmg.sha256 \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "Codex TPS $GITHUB_REF_NAME" \
-            --generate-notes \
-            --verify-tag
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-macos
+          path: |
+            dist/Codex-TPS.dmg
+            dist/Codex-TPS.dmg.sha256
 
       - name: Remove temporary Apple credentials
         if: ${{ always() }}
@@ -108,3 +103,124 @@ jobs:
           if [[ -n "${CODEX_TPS_NOTARY_KEYCHAIN:-}" ]]; then
             security delete-keychain "$CODEX_TPS_NOTARY_KEYCHAIN" || true
           fi
+
+  windows:
+    runs-on: windows-2025
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: windows/**/packages.lock.json
+      - name: Check tag and toolchain
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          [xml]$project = Get-Content "windows/src/CodexTPS.Windows/CodexTPS.Windows.csproj"
+          if ($project.Project.PropertyGroup.Version -ne $version) {
+            throw "Tag version $version does not match Windows project version."
+          }
+          dotnet --info
+          $compiler = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6/ISCC.exe"
+          if (-not (Test-Path $compiler)) {
+            throw "Inno Setup 6 is missing from the Windows runner."
+          }
+          & $compiler /?
+      - name: Test and build Windows release assets
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version $version
+      - name: Verify Windows release assets
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          $assets = @(
+            "./windows/dist/Codex-TPS-Windows-win-x64.zip",
+            "./windows/dist/Codex-TPS-Windows-win-x64-Setup.exe"
+          )
+          foreach ($asset in $assets) {
+            $expected = ((Get-Content "$asset.sha256" -Raw).Trim() -split "\s+")[0].ToLowerInvariant()
+            $actual = (Get-FileHash -Algorithm SHA256 $asset).Hash.ToLowerInvariant()
+            if ($expected -ne $actual) { throw "Checksum mismatch for $asset." }
+          }
+
+          $installer = Resolve-Path $assets[1]
+          $install = Join-Path $env:RUNNER_TEMP "Codex TPS release"
+          $arguments = @(
+            "/VERYSILENT",
+            "/SUPPRESSMSGBOXES",
+            "/NORESTART",
+            "/NOICONS",
+            "/DIR=`"$install`""
+          )
+          $result = Start-Process $installer -ArgumentList $arguments -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Installer exited with $($result.ExitCode)." }
+
+          $executable = Get-Item (Join-Path $install "CodexTPS.exe")
+          if (-not $executable.VersionInfo.ProductVersion.StartsWith($version)) {
+            throw "Expected installed version $version, got $($executable.VersionInfo.ProductVersion)."
+          }
+          $uninstaller = Join-Path $install "unins000.exe"
+          $result = Start-Process $uninstaller `
+            -ArgumentList @("/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART") `
+            -Wait `
+            -PassThru
+          if ($result.ExitCode -ne 0) { throw "Uninstaller exited with $($result.ExitCode)." }
+          if (Test-Path $executable.FullName) { throw "CodexTPS.exe remains after uninstall." }
+
+          $signature = Get-AuthenticodeSignature $installer
+          Write-Output "Windows Authenticode status: $($signature.Status)"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-windows
+          path: |
+            windows/dist/Codex-TPS-Windows-win-x64.zip
+            windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
+            windows/dist/Codex-TPS-Windows-win-x64-Setup.exe
+            windows/dist/Codex-TPS-Windows-win-x64-Setup.exe.sha256
+
+  publish:
+    needs:
+      - macos
+      - windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Verify checksums
+        working-directory: release-assets
+        run: |
+          sha256sum --check Codex-TPS.dmg.sha256
+          sha256sum --check Codex-TPS-Windows-win-x64.zip.sha256
+          sha256sum --check Codex-TPS-Windows-win-x64-Setup.exe.sha256
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat >release-notes.md <<'EOF'
+          ## Windows
+
+          Download `Codex-TPS-Windows-win-x64-Setup.exe` for the standard current-user installer. It installs under `%LOCALAPPDATA%\Programs\Codex TPS`, supports upgrades and uninstall, and includes Ambient Ops automatic LAN discovery. The Windows package is currently not Authenticode-signed and may show an unknown-publisher warning.
+
+          ## macOS
+
+          `Codex-TPS.dmg` is signed with Apple Developer ID, notarized, stapled, and checksum verified. This release adds Ambient Ops automatic discovery, aggregate telemetry, and host pet reporting.
+          EOF
+          gh release create "$GITHUB_REF_NAME" \
+            release-assets/Codex-TPS.dmg \
+            release-assets/Codex-TPS.dmg.sha256 \
+            release-assets/Codex-TPS-Windows-win-x64.zip \
+            release-assets/Codex-TPS-Windows-win-x64.zip.sha256 \
+            release-assets/Codex-TPS-Windows-win-x64-Setup.exe \
+            release-assets/Codex-TPS-Windows-win-x64-Setup.exe.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Codex TPS $GITHUB_REF_NAME" \
+            --notes-file release-notes.md \
+            --verify-tag
