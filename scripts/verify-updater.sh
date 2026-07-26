@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 INSTALLER="$ROOT_DIR/scripts/install-release.sh"
 PREFERENCES_DOMAIN="io.github.gaofeng21cn.codex-tps"
+VERIFY_MODE="${CODEX_TPS_UPDATER_VERIFY_MODE:-strict}"
 DMG_PATH="${1:-$ROOT_DIR/dist/Codex-TPS.dmg}"
 CHECKSUM_PATH="${2:-$DMG_PATH.sha256}"
 EXPECTED_VERSION="${CODEX_TPS_EXPECTED_VERSION:-$(
@@ -35,6 +36,14 @@ ROLLBACK_PID=""
 ROLLBACK_SUCCESS_OLD_PID=""
 STARTED_PID=""
 PREFERENCES_BEFORE=""
+
+case "$VERIFY_MODE" in
+  strict | adhoc) ;;
+  *)
+    echo "Updater verification mode must be strict or adhoc." >&2
+    exit 1
+    ;;
+esac
 
 preferences_digest() {
   local exported
@@ -113,10 +122,13 @@ stop_app_processes() {
 }
 
 cleanup() {
-  stop_app_processes "$TARGET_APP"
-  stop_app_processes "$OTHER_APP"
+  local exit_status=$?
+
+  stop_app_processes "$TARGET_APP" || true
+  stop_app_processes "$OTHER_APP" || true
   /usr/bin/chflags -R nouchg "$TEST_ROOT" 2>/dev/null || true
   rm -rf "$TEST_ROOT"
+  return "$exit_status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
@@ -138,20 +150,27 @@ start_stub_app() {
 }
 
 run_installer() {
-  CODEX_TPS_DMG_URL="file://$DMG_PATH" \
-  CODEX_TPS_CHECKSUM_URL="file://$CHECKSUM_PATH" \
-  CODEX_TPS_EXPECTED_VERSION="$EXPECTED_VERSION" \
-  CODEX_TPS_INSTALL_DIR="$TARGET_ROOT" \
-  CODEX_TPS_RUNNING_PID="$1" \
-  CODEX_TPS_RUNNING_APP="$2" \
-  CODEX_TPS_OPEN_COMMAND="${3:-/usr/bin/open}" \
-    "$INSTALLER"
+  local installer_environment=(
+    "CODEX_TPS_DMG_URL=file://$DMG_PATH"
+    "CODEX_TPS_CHECKSUM_URL=file://$CHECKSUM_PATH"
+    "CODEX_TPS_EXPECTED_VERSION=$EXPECTED_VERSION"
+    "CODEX_TPS_INSTALL_DIR=$TARGET_ROOT"
+    "CODEX_TPS_RUNNING_PID=$1"
+    "CODEX_TPS_RUNNING_APP=$2"
+    "CODEX_TPS_OPEN_COMMAND=${3:-/usr/bin/open}"
+  )
+
+  if [[ "$VERIFY_MODE" == "adhoc" ]]; then
+    installer_environment+=("CODEX_TPS_UPDATER_TEST_ROOT=$TEST_ROOT")
+  fi
+  /usr/bin/env "${installer_environment[@]}" "$INSTALLER"
 }
 
 if [[ ! -f "$DMG_PATH" || ! -f "$CHECKSUM_PATH" ]]; then
   echo "Updater verification requires a DMG and checksum." >&2
   exit 1
 fi
+echo "Updater verification trust mode: $VERIFY_MODE."
 PREFERENCES_BEFORE="$(preferences_digest)"
 
 cat >"$STUB_SOURCE" <<'EOF'
@@ -194,6 +213,25 @@ SECOND_OLD_PID="$STARTED_PID"
 start_stub_app "$OTHER_APP"
 OTHER_PID="$STARTED_PID"
 
+if [[ "$VERIFY_MODE" == "adhoc" ]]; then
+  if CODEX_TPS_UPDATER_TEST_ROOT="$TEST_ROOT" \
+    CODEX_TPS_DMG_URL="file://$DMG_PATH" \
+    CODEX_TPS_CHECKSUM_URL="file://$CHECKSUM_PATH" \
+    CODEX_TPS_INSTALL_DIR="/Applications" \
+    CODEX_TPS_RUNNING_PID="$OLD_PID" \
+    CODEX_TPS_RUNNING_APP="$TARGET_APP" \
+    CODEX_TPS_OPEN_COMMAND="$DIRECT_OPEN" \
+    "$INSTALLER" >"$TEST_ROOT/unsafe-test-root.log" 2>&1
+  then
+    echo "Updater verification allowed test trust outside its test root." >&2
+    exit 1
+  fi
+  if ! grep -q "restricted to its test root" "$TEST_ROOT/unsafe-test-root.log"; then
+    echo "Updater verification failed for the wrong test-root reason." >&2
+    exit 1
+  fi
+fi
+
 if CODEX_TPS_RUNNING_PID="not-a-pid" \
   CODEX_TPS_RUNNING_APP="$TARGET_APP" \
   CODEX_TPS_INSTALL_DIR="$TARGET_ROOT" \
@@ -212,7 +250,7 @@ if ! kill -0 "$OLD_PID" 2>/dev/null || ! kill -0 "$SECOND_OLD_PID" 2>/dev/null; 
   exit 1
 fi
 
-if run_installer "$OTHER_PID" "$TARGET_APP" >"$TEST_ROOT/wrong-process.log" 2>&1; then
+if run_installer "$OTHER_PID" "$TARGET_APP" "$DIRECT_OPEN" >"$TEST_ROOT/wrong-process.log" 2>&1; then
   echo "Updater verification accepted a process from another app." >&2
   exit 1
 fi

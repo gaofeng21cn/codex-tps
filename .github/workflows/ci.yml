@@ -16,11 +16,18 @@ jobs:
           xcrun swift --version
           xcrun --show-sdk-version
       - name: Lint
-        run: xcrun swift-format lint --recursive Sources Tests Package.swift
+        run: |
+          xcrun swift-format lint --recursive Sources Tests Package.swift
+          bash -n scripts/install-release.sh
+          bash -n scripts/verify-updater.sh
       - name: Test
         run: swift test
       - name: Package DMG
         run: ./scripts/build-dmg.sh
+      - name: Verify updater transaction
+        env:
+          CODEX_TPS_UPDATER_VERIFY_MODE: adhoc
+        run: ./scripts/verify-updater.sh
       - uses: actions/upload-artifact@v7
         with:
           name: codex-tps-dmg

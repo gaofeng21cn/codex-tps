@@ -35,7 +35,10 @@ jobs:
           version="$(plutil -extract CFBundleShortVersionString raw Resources/Info.plist)"
           [[ "$GITHUB_REF_NAME" == "v$version" ]]
       - name: Lint
-        run: xcrun swift-format lint --recursive Sources Tests Package.swift
+        run: |
+          xcrun swift-format lint --recursive Sources Tests Package.swift
+          bash -n scripts/install-release.sh
+          bash -n scripts/verify-updater.sh
       - name: Test
         run: swift test
 
@@ -88,6 +91,9 @@ jobs:
           export CODEX_TPS_EXPECTED_VERSION="${CODEX_TPS_EXPECTED_VERSION#v}"
           ./scripts/notarize-dmg.sh
           ./scripts/verify-release.sh
+
+      - name: Verify signed updater transaction
+        run: ./scripts/verify-updater.sh
 
       - uses: actions/upload-artifact@v7
         with:
