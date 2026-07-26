@@ -49,6 +49,65 @@ final class AmbientOpsPushTests: XCTestCase {
     XCTAssertEqual(failed.activeSessions, live.activeSessions)
   }
 
+  func testTracksHostPetIdentityAndActivityState() throws {
+    let definition = try AmbientOpsPetDefinition(
+      id: "ledger-owl",
+      displayName: "Ledger Owl",
+      spriteVersionNumber: 1,
+      assetHash: String(repeating: "a", count: 64)
+    )
+    var tracker = AmbientOpsPetTracker()
+    let runningUsage = usageSnapshot(
+      status: .ready,
+      generatedAt: Date(timeIntervalSince1970: 1_000)
+    )
+    let running = tracker.snapshot(definition: definition, usage: runningUsage)
+    let stillRunning = tracker.snapshot(
+      definition: definition,
+      usage: usageSnapshot(status: .ready, generatedAt: Date(timeIntervalSince1970: 1_010))
+    )
+    let failed = tracker.snapshot(
+      definition: definition,
+      usage: usageSnapshot(status: .readFailed, generatedAt: Date(timeIntervalSince1970: 1_020))
+    )
+
+    XCTAssertEqual(running.id, "ledger-owl")
+    XCTAssertEqual(running.state, .running)
+    XCTAssertEqual(running.stateSince, Date(timeIntervalSince1970: 1_000))
+    XCTAssertEqual(stillRunning.stateSince, running.stateSince)
+    XCTAssertEqual(failed.state, .failed)
+    XCTAssertEqual(failed.stateSince, Date(timeIntervalSince1970: 1_020))
+  }
+
+  func testEncodesPetWithoutConversationContent() throws {
+    let identity = try AmbientOpsMachineIdentity(
+      machineID: "primary-mac",
+      machineName: "Primary Mac",
+      platform: "macOS"
+    )
+    let definition = try AmbientOpsPetDefinition(
+      id: "ledger-owl",
+      displayName: "Ledger Owl",
+      spriteVersionNumber: 1,
+      assetHash: String(repeating: "b", count: 64)
+    )
+    let usage = usageSnapshot(status: .ready)
+    var tracker = AmbientOpsPetTracker()
+    let payload = AmbientOpsAgentSnapshot(
+      usage: usage,
+      identity: identity,
+      pet: tracker.snapshot(definition: definition, usage: usage)
+    )
+    let data = try JSONEncoder().encode(payload)
+    let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let pet = try XCTUnwrap(object["pet"] as? [String: Any])
+
+    XCTAssertEqual(payload.schemaVersion, 2)
+    XCTAssertEqual(pet["id"] as? String, "ledger-owl")
+    XCTAssertEqual(pet["state"] as? String, "running")
+    XCTAssertNil(pet["prompt"])
+  }
+
   func testBuildsAuthenticatedRequestWithoutIdentityLeaks() throws {
     let identity = try AmbientOpsMachineIdentity(
       machineID: "primary-mac",
@@ -136,9 +195,12 @@ final class AmbientOpsPushTests: XCTestCase {
     }
   }
 
-  private func usageSnapshot(status: CollectionStatus) -> UsageSnapshot {
+  private func usageSnapshot(
+    status: CollectionStatus,
+    generatedAt: Date = Date(timeIntervalSince1970: 1_000)
+  ) -> UsageSnapshot {
     UsageSnapshot(
-      generatedAt: Date(timeIntervalSince1970: 1_000),
+      generatedAt: generatedAt,
       oneMinute: WindowMetrics(
         windowSeconds: 60,
         requestCount: 2,

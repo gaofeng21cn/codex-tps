@@ -11,23 +11,54 @@ final class MonitorStore: ObservableObject {
   @Published private(set) var selectedWindow: MetricWindow
   @Published private(set) var refreshCadence: RefreshCadence
   @Published private(set) var settingsError: String?
+  @Published private(set) var ambientEnabled: Bool
+  @Published private(set) var ambientAutoDiscover: Bool
+  @Published private(set) var ambientManualURL: String
+  @Published private(set) var ambientPet: AmbientOpsPetChoice
+  @Published private(set) var ambientConnection: AmbientOpsConnectionState = .disabled
 
   let sessionsURL: URL
 
   private let scanner: SessionScanner
+  private let ambientMachineID: String
+  private let ambientDiscovery = AmbientOpsDiscovery()
   private var refreshLoop: Task<Void, Never>?
+  private var ambientPushTask: Task<Void, Never>?
+  private var ambientService: AmbientOpsService?
+  private var lastAmbientSnapshot: AmbientOpsAgentSnapshot?
+  private var ambientPetTracker = AmbientOpsPetTracker()
   private static let selectedWindowDefaultsKey = "selectedMetricWindow"
   private static let refreshCadenceDefaultsKey = "refreshCadenceSeconds"
+  private static let ambientEnabledDefaultsKey = "ambientOpsEnabled"
+  private static let ambientAutoDiscoverDefaultsKey = "ambientOpsAutoDiscover"
+  private static let ambientManualURLDefaultsKey = "ambientOpsManualURL"
+  private static let ambientInstanceIDDefaultsKey = "ambientOpsInstanceID"
+  private static let ambientPetDefaultsKey = "ambientOpsPet"
+  private static let ambientMachineIDDefaultsKey = "ambientOpsMachineID"
 
   init(codexHome: URL = SessionScanner.defaultCodexHome()) {
     let savedWindow = UserDefaults.standard.string(forKey: Self.selectedWindowDefaultsKey)
     let savedCadence = UserDefaults.standard.double(forKey: Self.refreshCadenceDefaultsKey)
     selectedWindow = savedWindow.flatMap(MetricWindow.init(rawValue:)) ?? .oneMinute
     refreshCadence = RefreshCadence(rawValue: savedCadence) ?? .fifteenSeconds
+    ambientEnabled =
+      UserDefaults.standard.object(forKey: Self.ambientEnabledDefaultsKey) as? Bool ?? true
+    ambientAutoDiscover =
+      UserDefaults.standard.object(forKey: Self.ambientAutoDiscoverDefaultsKey) as? Bool ?? true
+    ambientManualURL =
+      UserDefaults.standard.string(forKey: Self.ambientManualURLDefaultsKey) ?? ""
+    ambientPet =
+      UserDefaults.standard.string(forKey: Self.ambientPetDefaultsKey)
+        .flatMap(AmbientOpsPetChoice.init(rawValue:)) ?? .ledgerOwl
+    ambientMachineID =
+      UserDefaults.standard.string(forKey: Self.ambientMachineIDDefaultsKey)
+        ?? AmbientOpsMachineIdentity.defaultLocalMachineID()
+    UserDefaults.standard.set(ambientMachineID, forKey: Self.ambientMachineIDDefaultsKey)
     scanner = SessionScanner(codexHome: codexHome)
     sessionsURL = codexHome.appendingPathComponent("sessions", isDirectory: true)
     snapshot = .empty(at: Date(), status: .ready)
     refreshLaunchAtLoginStatus()
+    configureAmbientDiscovery()
   }
 
   var menuBarTitle: String {
@@ -39,6 +70,7 @@ final class MonitorStore: ObservableObject {
   func start() {
     guard refreshLoop == nil else { return }
     scheduleRefreshLoop()
+    refreshAmbientConfiguration()
   }
 
   func setRefreshCadence(_ cadence: RefreshCadence) {
@@ -72,6 +104,50 @@ final class MonitorStore: ObservableObject {
     let nextSnapshot = await scanner.refresh()
     snapshot = nextSnapshot
     isRefreshing = false
+    pushAmbient(nextSnapshot)
+  }
+
+  func setAmbientEnabled(_ enabled: Bool) {
+    ambientEnabled = enabled
+    UserDefaults.standard.set(enabled, forKey: Self.ambientEnabledDefaultsKey)
+    refreshAmbientConfiguration()
+    if enabled {
+      Task { await refresh() }
+    }
+  }
+
+  func setAmbientAutoDiscover(_ enabled: Bool) {
+    ambientAutoDiscover = enabled
+    UserDefaults.standard.set(enabled, forKey: Self.ambientAutoDiscoverDefaultsKey)
+    ambientService = nil
+    refreshAmbientConfiguration()
+    if ambientEnabled {
+      Task { await refresh() }
+    }
+  }
+
+  func setAmbientManualURL(_ value: String) {
+    ambientManualURL = value
+    UserDefaults.standard.set(value, forKey: Self.ambientManualURLDefaultsKey)
+    guard !ambientAutoDiscover else { return }
+    refreshAmbientConfiguration()
+  }
+
+  func setAmbientPet(_ pet: AmbientOpsPetChoice) {
+    guard pet != ambientPet else { return }
+    ambientPet = pet
+    ambientPetTracker = AmbientOpsPetTracker()
+    UserDefaults.standard.set(pet.rawValue, forKey: Self.ambientPetDefaultsKey)
+    if ambientEnabled {
+      Task { await refresh() }
+    }
+  }
+
+  func rediscoverAmbientOps() {
+    UserDefaults.standard.removeObject(forKey: Self.ambientInstanceIDDefaultsKey)
+    ambientService = nil
+    ambientDiscovery.stop()
+    refreshAmbientConfiguration()
   }
 
   func openSessionsDirectory() {
@@ -98,6 +174,117 @@ final class MonitorStore: ObservableObject {
 
   func quit() {
     NSApplication.shared.terminate(nil)
+  }
+
+  private func configureAmbientDiscovery() {
+    ambientDiscovery.onStatusChanged = { [weak self] _ in
+      guard let self, ambientEnabled, ambientAutoDiscover, ambientService == nil else {
+        return
+      }
+      ambientConnection = .discovering
+    }
+    ambientDiscovery.onServiceResolved = { [weak self] service in
+      guard let self, ambientEnabled, ambientAutoDiscover else { return }
+      ambientService = service
+      UserDefaults.standard.set(service.instanceID, forKey: Self.ambientInstanceIDDefaultsKey)
+      ambientConnection = .ready(name: service.name, endpoint: service.endpoint)
+      pushAmbient(snapshot)
+    }
+  }
+
+  private func refreshAmbientConfiguration() {
+    ambientPushTask?.cancel()
+    ambientPushTask = nil
+
+    guard ambientEnabled else {
+      ambientDiscovery.stop()
+      ambientConnection = .disabled
+      return
+    }
+    guard AmbientOpsKeychain.token() != nil else {
+      ambientDiscovery.stop()
+      ambientConnection = .failed(message: "Keychain 中缺少推送令牌")
+      return
+    }
+
+    if ambientAutoDiscover {
+      let preferredID = UserDefaults.standard.string(
+        forKey: Self.ambientInstanceIDDefaultsKey)
+      ambientConnection =
+        ambientService.map {
+          .ready(name: $0.name, endpoint: $0.endpoint)
+        } ?? .discovering
+      ambientDiscovery.start(preferredInstanceID: preferredID)
+      return
+    }
+
+    ambientDiscovery.stop()
+    guard let endpoint = manualAmbientEndpoint else {
+      ambientConnection = .failed(message: "请输入有效的 HTTP(S) 地址")
+      return
+    }
+    ambientConnection = .ready(name: endpoint.host ?? "Ambient Ops", endpoint: endpoint)
+  }
+
+  private var manualAmbientEndpoint: URL? {
+    guard
+      let endpoint = URL(string: ambientManualURL),
+      ["http", "https"].contains(endpoint.scheme?.lowercased() ?? ""),
+      endpoint.host != nil
+    else { return nil }
+    return endpoint
+  }
+
+  private func pushAmbient(_ usage: UsageSnapshot) {
+    guard ambientEnabled, ambientPushTask == nil else { return }
+    let service = ambientService
+    let endpoint: URL?
+    let name: String
+    if ambientAutoDiscover {
+      endpoint = service?.endpoint
+      name = service?.name ?? "Ambient Ops"
+    } else {
+      endpoint = manualAmbientEndpoint
+      name = endpoint?.host ?? "Ambient Ops"
+    }
+    guard let endpoint, let token = AmbientOpsKeychain.token() else { return }
+    let pet = ambientPet.definition.map {
+      ambientPetTracker.snapshot(definition: $0, usage: usage)
+    }
+
+    ambientPushTask = Task { [weak self] in
+      guard let self else { return }
+      ambientConnection = .pushing(name: name, endpoint: endpoint)
+      do {
+        let identity = try AmbientOpsMachineIdentity.localMachine(machineID: ambientMachineID)
+        let request = try AmbientOpsPushRequest(
+          endpoint: endpoint,
+          token: token,
+          identity: identity
+        )
+        let payload = AmbientOpsAgentSnapshot(
+          usage: usage,
+          identity: identity,
+          fallback: lastAmbientSnapshot,
+          pet: pet
+        )
+        try await AmbientOpsPushClient(request: request).push(payload)
+        if usage.status == .ready {
+          lastAmbientSnapshot = payload
+        }
+        ambientConnection = .live(name: name, endpoint: endpoint, pushedAt: Date())
+      } catch is CancellationError {
+        return
+      } catch {
+        ambientConnection = .failed(message: "推送失败：\(error.localizedDescription)")
+        if ambientAutoDiscover {
+          ambientService = nil
+          ambientDiscovery.stop()
+          ambientDiscovery.start(preferredInstanceID: nil)
+        }
+      }
+      ambientPushTask = nil
+    }
   }
 }
 

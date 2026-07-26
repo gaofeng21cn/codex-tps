@@ -5,6 +5,7 @@ import SwiftUI
 struct MonitorPanel: View {
   @EnvironmentObject private var store: MonitorStore
   @EnvironmentObject private var updateManager: UpdateManager
+  @State private var settingsExpanded = false
 
   private var metrics: WindowMetrics {
     store.selectedWindow.metrics(from: store.snapshot)
@@ -15,6 +16,8 @@ struct MonitorPanel: View {
       header
       Divider()
       throughput
+      Divider()
+      settings
       Divider()
       footer
     }
@@ -181,6 +184,137 @@ struct MonitorPanel: View {
       }
     }
     .padding(16)
+  }
+
+  private var settings: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        withAnimation(.easeInOut(duration: 0.18)) {
+          settingsExpanded.toggle()
+        }
+      } label: {
+        HStack(spacing: 8) {
+          Label("Ambient Ops", systemImage: "display.2")
+            .font(.subheadline.weight(.semibold))
+          Spacer()
+          Circle()
+            .fill(ambientStatusColor)
+            .frame(width: 7, height: 7)
+          Text(store.ambientConnection.label)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .layoutPriority(1)
+          Image(systemName: "chevron.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+            .rotationEffect(.degrees(settingsExpanded ? 90 : 0))
+        }
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Ambient Ops 高级连接设置")
+      .accessibilityValue(store.ambientConnection.label)
+      .accessibilityHint(settingsExpanded ? "收起设置" : "展开设置")
+
+      if settingsExpanded {
+        ambientSettings
+          .padding(.top, 12)
+          .transition(.opacity.combined(with: .move(edge: .top)))
+      }
+    }
+    .padding(16)
+  }
+
+  private var ambientSettings: some View {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(spacing: 12) {
+        Toggle(
+          "发送聚合指标",
+          isOn: Binding(
+            get: { store.ambientEnabled },
+            set: { enabled in store.setAmbientEnabled(enabled) }
+          )
+        )
+        .toggleStyle(.switch)
+        .controlSize(.small)
+
+        Spacer()
+
+        Toggle(
+          "自动发现",
+          isOn: Binding(
+            get: { store.ambientAutoDiscover },
+            set: { enabled in store.setAmbientAutoDiscover(enabled) }
+          )
+        )
+        .toggleStyle(.switch)
+        .controlSize(.small)
+        .disabled(!store.ambientEnabled)
+
+        Button(action: store.rediscoverAmbientOps) {
+          Image(systemName: "arrow.trianglehead.2.clockwise.rotate.90")
+        }
+        .buttonStyle(.borderless)
+        .disabled(!store.ambientEnabled || !store.ambientAutoDiscover)
+        .help("重新发现 Ambient Ops")
+      }
+
+      if store.ambientEnabled && !store.ambientAutoDiscover {
+        TextField(
+          "http://ambient-ops.local:8787",
+          text: Binding(
+            get: { store.ambientManualURL },
+            set: { value in store.setAmbientManualURL(value) }
+          )
+        )
+        .textFieldStyle(.roundedBorder)
+        .font(.caption.monospaced())
+      } else if let endpoint = store.ambientConnection.endpoint {
+        Text(endpoint.absoluteString)
+          .font(.caption2.monospaced())
+          .foregroundStyle(.tertiary)
+          .lineLimit(1)
+          .truncationMode(.middle)
+      }
+
+      HStack {
+        Label("宠物", systemImage: "bird")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+        Spacer()
+        Picker(
+          "宠物",
+          selection: Binding(
+            get: { store.ambientPet },
+            set: { pet in store.setAmbientPet(pet) }
+          )
+        ) {
+          ForEach(AmbientOpsPetChoice.allCases) { pet in
+            Text(pet.label).tag(pet)
+          }
+        }
+        .labelsHidden()
+        .pickerStyle(.menu)
+        .controlSize(.small)
+      }
+      .disabled(!store.ambientEnabled)
+    }
+  }
+
+  private var ambientStatusColor: Color {
+    if store.ambientConnection.isLive { return .green }
+    switch store.ambientConnection {
+    case .failed:
+      return .red
+    case .disabled:
+      return .secondary
+    case .discovering, .ready, .pushing:
+      return .orange
+    case .live:
+      return .green
+    }
   }
 
   @ViewBuilder
