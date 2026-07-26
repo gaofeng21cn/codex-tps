@@ -47,7 +47,7 @@ jobs:
           if (-not (Test-Path $compiler)) {
             throw "Inno Setup 6 is missing from the Windows runner."
           }
-          & $compiler /?
+          Write-Output "Inno Setup $((Get-Item $compiler).VersionInfo.FileVersion)"
       - name: Test and build Windows packages
         run: ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.5
       - name: Verify portable package
