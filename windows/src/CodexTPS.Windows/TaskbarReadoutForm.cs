@@ -19,6 +19,7 @@ internal sealed class TaskbarReadoutForm : Form
         Interval = 1_000,
     };
     private TaskbarEdge edge = TaskbarEdge.Bottom;
+    private int taskbarDpi = 96;
     private string rateText = "-- t/s";
 
     public TaskbarReadoutForm(ContextMenuStrip contextMenu)
@@ -93,7 +94,7 @@ internal sealed class TaskbarReadoutForm : Form
         eventArgs.Graphics.TextRenderingHint =
             System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-        var radius = Math.Max(4, 5 * DeviceDpi / 96);
+        var radius = Math.Max(4, 5 * taskbarDpi / 96);
         using var background = RoundedRectangle(
             new Rectangle(0, 0, Math.Max(1, Width - 1), Math.Max(1, Height - 1)),
             radius);
@@ -107,8 +108,9 @@ internal sealed class TaskbarReadoutForm : Form
         using var textBrush = new SolidBrush(Color.White);
         using var font = new Font(
             "Segoe UI Variable Text",
-            vertical ? 8f : 9f,
-            FontStyle.Bold);
+            TaskbarReadoutAppearance.FontPixelSize(edge, taskbarDpi),
+            FontStyle.Bold,
+            GraphicsUnit.Pixel);
         using var format = new StringFormat
         {
             Alignment = StringAlignment.Center,
@@ -131,7 +133,7 @@ internal sealed class TaskbarReadoutForm : Form
             return;
         }
 
-        var radius = Math.Max(4, 5 * DeviceDpi / 96);
+        var radius = Math.Max(4, 5 * taskbarDpi / 96);
         using var path = RoundedRectangle(
             new Rectangle(0, 0, Width, Height),
             radius);
@@ -161,6 +163,7 @@ internal sealed class TaskbarReadoutForm : Form
 
         var placement = TaskbarPlacement.Calculate(geometry);
         edge = placement.Edge;
+        taskbarDpi = geometry.Dpi > 0 ? geometry.Dpi : 96;
         if (!placement.IsVisible)
         {
             Hide();
@@ -372,5 +375,20 @@ internal sealed class TaskbarReadoutForm : Form
             public NativeRectangle Rectangle;
             public IntPtr Parameter;
         }
+    }
+}
+
+internal static class TaskbarReadoutAppearance
+{
+    private const float HorizontalFontLogicalPixels = 12f;
+    private const float VerticalFontLogicalPixels = 11f;
+
+    public static float FontPixelSize(TaskbarEdge edge, int dpi)
+    {
+        var logicalPixels = edge is TaskbarEdge.Left or TaskbarEdge.Right
+            ? VerticalFontLogicalPixels
+            : HorizontalFontLogicalPixels;
+        var effectiveDpi = dpi > 0 ? dpi : 96;
+        return logicalPixels * effectiveDpi / 96f;
     }
 }
