@@ -54,7 +54,9 @@ try {
     }
 
     if (-not $NoLaunch) {
-        Start-Process (Join-Path $InstallDirectory "CodexTPS.exe")
+        Start-Process `
+            (Join-Path $InstallDirectory "CodexTPS.exe") `
+            -ArgumentList "--background"
     }
     Write-Output "Installed Codex TPS to $InstallDirectory"
 }
