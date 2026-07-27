@@ -248,7 +248,7 @@ internal sealed class DashboardForm : RoundedPopupForm
         };
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 44));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 84));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
 
         header.Paint += (_, eventArgs) => eventArgs.Graphics.DrawImage(
             applicationImage,
@@ -301,9 +301,13 @@ internal sealed class DashboardForm : RoundedPopupForm
         var folderButton = HeaderButton("\uE8B7", "打开 Codex 会话目录");
         folderButton.Click += (_, _) => SessionsFolderRequested?.Invoke(this, EventArgs.Empty);
         toolTip.SetToolTip(folderButton, sessionsRoot);
+        var minimizeButton = HeaderButton("\uE921", "最小化到通知区域");
+        minimizeButton.Click += (_, _) => HideToTray();
+        toolTip.SetToolTip(minimizeButton, "最小化到通知区域");
         actions.Controls.Add(refreshButton);
         actions.Controls.Add(settingsButton);
         actions.Controls.Add(folderButton);
+        actions.Controls.Add(minimizeButton);
         header.Controls.Add(actions, 2, 0);
 
         EnableWindowDrag(header);
@@ -555,6 +559,15 @@ internal sealed class DashboardForm : RoundedPopupForm
         if (!allowClose && eventArgs.CloseReason == CloseReason.UserClosing)
         {
             eventArgs.Cancel = true;
+            HideToTray();
+        }
+    }
+
+    protected override void OnDeactivate(EventArgs eventArgs)
+    {
+        base.OnDeactivate(eventArgs);
+        if (!allowClose && Visible)
+        {
             HideToTray();
         }
     }
