@@ -18,15 +18,18 @@ public sealed class InstallerLaunchContractTests
         var script = ReadContract("install.ps1");
 
         Assert.Contains(
-            """
-            Start-Process `
-                        (Join-Path $InstallDirectory "CodexTPS.exe") `
-                        -ArgumentList "--background"
-            """,
+            Normalize(
+                """
+                Start-Process `
+                            (Join-Path $InstallDirectory "CodexTPS.exe") `
+                            -ArgumentList "--background"
+                """),
             script);
     }
 
     private static string ReadContract(string name) =>
-        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "LaunchContracts", name))
-            .Replace("\r\n", "\n", StringComparison.Ordinal);
+        Normalize(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "LaunchContracts", name)));
+
+    private static string Normalize(string value) =>
+        value.Replace("\r\n", "\n", StringComparison.Ordinal);
 }
