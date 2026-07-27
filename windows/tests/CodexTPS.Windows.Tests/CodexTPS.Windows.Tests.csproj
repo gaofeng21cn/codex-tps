@@ -19,4 +19,12 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\CodexTPS.Windows\CodexTPS.Windows.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\installer\CodexTPS.iss"
+          Link="LaunchContracts\CodexTPS.iss"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\scripts\install.ps1"
+          Link="LaunchContracts\install.ps1"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

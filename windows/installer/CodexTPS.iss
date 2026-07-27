@@ -56,7 +56,7 @@ Name: "{autoprograms}\Codex TPS"; Filename: "{app}\CodexTPS.exe"; WorkingDir: "{
 Name: "{autodesktop}\Codex TPS"; Filename: "{app}\CodexTPS.exe"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\CodexTPS.exe"; Description: "{cm:LaunchProgram,Codex TPS}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\CodexTPS.exe"; Parameters: "--background"; Description: "{cm:LaunchProgram,Codex TPS}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
