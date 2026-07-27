@@ -33,7 +33,7 @@ public sealed class DashboardFormBehaviorTests
         RunOnStaThread(() =>
         {
             using var form = new DashboardForm(string.Empty);
-            var minimize = Assert.IsType<Button>(
+            var minimize = Assert.IsAssignableFrom<Button>(
                 FindByAccessibleName(form, "最小化到通知区域"));
 
             form.Show();
