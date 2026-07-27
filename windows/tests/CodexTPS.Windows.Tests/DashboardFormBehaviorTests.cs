@@ -69,6 +69,7 @@ public sealed class DashboardFormBehaviorTests
                         "https://github.com/gaofeng21cn/codex-tps/releases/download/v0.2.20/Codex-TPS-Windows-win-x64-Setup.exe"),
                     new Uri(
                         "https://github.com/gaofeng21cn/codex-tps/releases/download/v0.2.20/Codex-TPS-Windows-win-x64-Setup.exe.sha256"))));
+            form.Show();
             check.PerformClick();
             install.PerformClick();
 
