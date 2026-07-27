@@ -7,12 +7,15 @@ internal sealed class TrayApplicationContext : ApplicationContext
 {
     private readonly AppSettingsStore settingsStore = new();
     private readonly AmbientOpsCoordinator ambientOps = new();
+    private readonly WindowsUpdateManager updateManager = new();
     private readonly CancellationTokenSource cancellation = new();
     private readonly Icon applicationIcon;
     private readonly ContextMenuStrip trayMenu;
+    private readonly ToolStripMenuItem updateMenuItem;
     private readonly NotifyIcon trayIcon;
     private readonly TaskbarReadoutForm taskbarReadout;
     private readonly System.Windows.Forms.Timer refreshTimer;
+    private readonly System.Windows.Forms.Timer updateTimer;
     private readonly DashboardFormSlot dashboard;
     private Icon? rateIcon;
     private AppSettings settings;
@@ -23,6 +26,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private bool refreshing;
     private bool exiting;
     private string? openedPairingUri;
+    private string? notifiedUpdateTag;
 
     public TrayApplicationContext(bool showDashboard)
     {
@@ -47,6 +51,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         trayMenu = new ContextMenuStrip();
         trayMenu.Items.Add("打开", null, (_, _) => ShowDashboard());
         trayMenu.Items.Add("刷新", null, async (_, _) => await RefreshAsync(forcePush: true));
+        updateMenuItem = new ToolStripMenuItem("检查更新");
+        updateMenuItem.Click += async (_, _) => await RunUpdateActionAsync();
+        trayMenu.Items.Add(updateMenuItem);
         trayMenu.Items.Add("设置", null, (_, _) => ShowSettings());
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("退出", null, (_, _) => ExitThread());
@@ -77,19 +84,32 @@ internal sealed class TrayApplicationContext : ApplicationContext
         };
         refreshTimer.Tick += async (_, _) => await RefreshAsync(forcePush: false);
         refreshTimer.Start();
+        updateTimer = new System.Windows.Forms.Timer
+        {
+            Interval = (int)TimeSpan.FromHours(6).TotalMilliseconds,
+        };
+        updateTimer.Tick += async (_, _) => await updateManager.CheckForUpdatesAsync(
+            manual: false,
+            cancellation.Token);
+        updateTimer.Start();
+        updateManager.StateChanged += UpdateManagerOnStateChanged;
         Dashboard.SetRefreshCadence(settings.RefreshSeconds);
         Dashboard.SetStartupEnabled(settings.StartWithWindows);
+        _ = Dashboard.Handle;
+        ApplyUpdateState(updateManager.State);
         if (showDashboard)
         {
             ShowDashboard();
         }
         _ = RefreshAsync(forcePush: true);
+        _ = updateManager.CheckForUpdatesAsync(manual: false, cancellation.Token);
     }
 
     protected override void ExitThreadCore()
     {
         exiting = true;
         refreshTimer.Stop();
+        updateTimer.Stop();
         cancellation.Cancel();
         taskbarReadout.Dispose();
         trayIcon.Visible = false;
@@ -99,6 +119,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         rateIcon?.Dispose();
         applicationIcon.Dispose();
         dashboard.Dispose();
+        updateTimer.Dispose();
+        updateManager.StateChanged -= UpdateManagerOnStateChanged;
+        updateManager.Dispose();
         cancellation.Dispose();
         base.ExitThreadCore();
     }
@@ -110,6 +133,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var form = new DashboardForm(scanner.SessionsRoot);
         form.SettingsRequested += (_, _) => ShowSettings();
         form.RefreshRequested += async (_, _) => await RefreshAsync(forcePush: true);
+        form.CheckForUpdatesRequested += async (_, _) => await updateManager.CheckForUpdatesAsync(
+            manual: true,
+            cancellation.Token);
+        form.InstallUpdateRequested += async (_, _) => await InstallAvailableUpdateAsync();
         form.SessionsFolderRequested += (_, _) => OpenSessionsDirectory();
         form.ExitRequested += (_, _) => ExitThread();
         form.RefreshCadenceChanged += SetRefreshCadence;
@@ -117,6 +144,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         form.UpdateSnapshot(lastSnapshot, ambientOps.Connection);
         form.SetRefreshCadence(settings.RefreshSeconds);
         form.SetStartupEnabled(settings.StartWithWindows);
+        form.SetUpdateState(updateManager.State);
         return form;
     }
 
@@ -178,6 +206,83 @@ internal sealed class TrayApplicationContext : ApplicationContext
         finally
         {
             refreshing = false;
+        }
+    }
+
+    private async Task RunUpdateActionAsync()
+    {
+        if (updateManager.State.Kind == AppUpdateKind.Available)
+        {
+            await InstallAvailableUpdateAsync();
+        }
+        else
+        {
+            await updateManager.CheckForUpdatesAsync(manual: true, cancellation.Token);
+        }
+    }
+
+    private async Task InstallAvailableUpdateAsync()
+    {
+        if (await updateManager.InstallAvailableUpdateAsync(cancellation.Token))
+        {
+            ExitThread();
+        }
+    }
+
+    private void UpdateManagerOnStateChanged(object? sender, AppUpdateState state)
+    {
+        if (exiting)
+        {
+            return;
+        }
+
+        var form = Dashboard;
+        if (form.InvokeRequired)
+        {
+            try
+            {
+                form.BeginInvoke(new Action(() => ApplyUpdateState(state)));
+            }
+            catch (InvalidOperationException)
+            {
+                // The application is already closing.
+            }
+            return;
+        }
+
+        ApplyUpdateState(state);
+    }
+
+    private void ApplyUpdateState(AppUpdateState state)
+    {
+        if (exiting)
+        {
+            return;
+        }
+
+        Dashboard.SetUpdateState(state);
+        updateMenuItem.Enabled = !state.IsBusy;
+        updateMenuItem.Text = state is { Kind: AppUpdateKind.Available, Release: { } release }
+            ? $"更新到 {release.TagName}"
+            : "检查更新";
+
+        if (state is { Kind: AppUpdateKind.Available, Release: { } available } &&
+            notifiedUpdateTag != available.TagName)
+        {
+            notifiedUpdateTag = available.TagName;
+            trayIcon.ShowBalloonTip(
+                5_000,
+                "Codex TPS 有新版本",
+                $"已发现 {available.TagName}，打开面板即可更新。",
+                ToolTipIcon.Info);
+        }
+        else if (state is { Kind: AppUpdateKind.Failed, Message: { } message })
+        {
+            trayIcon.ShowBalloonTip(
+                5_000,
+                "Codex TPS 更新失败",
+                message,
+                ToolTipIcon.Warning);
         }
     }
 

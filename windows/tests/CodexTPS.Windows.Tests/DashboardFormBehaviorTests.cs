@@ -45,6 +45,42 @@ public sealed class DashboardFormBehaviorTests
         });
     }
 
+    [Fact]
+    public void HeaderProvidesManualUpdateCheckAndAvailableReleaseAction()
+    {
+        RunOnStaThread(() =>
+        {
+            using var form = new DashboardForm(string.Empty);
+            var check = Assert.IsAssignableFrom<Button>(
+                FindByAccessibleName(form, "检查更新"));
+            var install = Assert.IsAssignableFrom<Button>(
+                FindByAccessibleName(form, "立即更新"));
+            var checkRequested = false;
+            var installRequested = false;
+            form.CheckForUpdatesRequested += (_, _) => checkRequested = true;
+            form.InstallUpdateRequested += (_, _) => installRequested = true;
+
+            form.SetUpdateState(new AppUpdateState(
+                AppUpdateKind.Available,
+                new AppRelease(
+                    "v0.2.20",
+                    new SemanticVersion(0, 2, 20),
+                    new Uri(
+                        "https://github.com/gaofeng21cn/codex-tps/releases/download/v0.2.20/Codex-TPS-Windows-win-x64-Setup.exe"),
+                    new Uri(
+                        "https://github.com/gaofeng21cn/codex-tps/releases/download/v0.2.20/Codex-TPS-Windows-win-x64-Setup.exe.sha256"))));
+            check.PerformClick();
+            install.PerformClick();
+
+            Assert.True(checkRequested);
+            Assert.True(installRequested);
+            Assert.True(install.Visible);
+            Assert.Equal(BaseDashboardHeight + 43, form.ClientSize.Height);
+        });
+    }
+
+    private const int BaseDashboardHeight = 408;
+
     private static Control? FindByAccessibleName(Control root, string accessibleName)
     {
         foreach (Control child in root.Controls)

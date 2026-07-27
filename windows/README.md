@@ -15,6 +15,8 @@ Codex home and can send aggregate metrics to Ambient Ops on the local network.
 - Manual Ambient Ops HTTP(S) URL override
 - Optional Ledger Owl state using the same Ambient Ops v2 payload as macOS
 - Optional per-user startup through `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
+- GitHub release checks after launch and every six hours, with user-confirmed in-app updates
+- SHA-256 verification, exact-PID handoff, installed-version readback, relaunch, and failure recovery
 - Automatic one-click pairing with Ambient Ops v0.1.4+ after LAN discovery
 - Per-device P-256 private key encrypted for the current Windows user with DPAPI
 - Legacy push token remains available as a DPAPI-protected compatibility path
@@ -69,6 +71,16 @@ in-place upgrades, and registers a normal Windows uninstaller. Uninstalling the
 app preserves `%LOCALAPPDATA%\Codex TPS\settings.json`; it removes an enabled
 Codex TPS login-startup registry value so Windows does not retain a dead path.
 
+After launch, the app checks the latest GitHub Release and repeats the check
+every six hours. It never installs silently without user confirmation. After
+**Update now** is selected, the app downloads the installer and published
+checksum, verifies SHA-256, copies a temporary updater, and exits. The updater
+waits for that exact old PID, verifies the package again, runs the current-user
+installer, reads back the installed file version, and launches a distinct new
+process. If the transaction fails, it writes a failure receipt and relaunches
+the still-usable installed executable. This mirrors the macOS user flow while
+keeping the platform-specific installation transaction native.
+
 The Windows installer is not yet Authenticode-signed because this repository
 does not have a Windows code-signing certificate. Windows can therefore show
 an unknown-publisher or SmartScreen warning even when the published SHA-256
@@ -94,7 +106,7 @@ windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
 To build the standard installer, also install Inno Setup 6 and run:
 
 ```powershell
-pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.19
+pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.20
 ```
 
 This additionally creates:
@@ -104,9 +116,11 @@ windows/dist/Codex-TPS-Windows-win-x64-Setup.exe
 windows/dist/Codex-TPS-Windows-win-x64-Setup.exe.sha256
 ```
 
-The GitHub `CI` workflow builds `win-x64` on a real Windows runner and uploads
-the same ZIP/checksum pair. CI artifacts are unsigned development builds; they
-are not a Windows release or SmartScreen reputation proof.
+The GitHub `CI` workflow builds `win-x64` on a real Windows runner, installs and
+starts the previous release, and exercises the current updater through
+old-process exit, silent upgrade, installed-version readback, and new-process
+startup. CI artifacts are unsigned development builds; they are not a Windows
+release or SmartScreen reputation proof.
 
 The first productized target is `win-x64`. Windows on Arm can run it through
 the operating system's x64 emulation; a native Arm64 artifact is not yet a

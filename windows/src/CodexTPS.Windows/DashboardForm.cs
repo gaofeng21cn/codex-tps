@@ -5,6 +5,8 @@ namespace CodexTPS.WindowsApp;
 
 internal sealed class DashboardForm : RoundedPopupForm
 {
+    private const int BaseClientHeight = 408;
+    private const int UpdateRowHeight = 42;
     private static readonly Color Background = Color.White;
     private static readonly Color Primary = Color.FromArgb(36, 36, 38);
     private static readonly Color Secondary = Color.FromArgb(128, 128, 132);
@@ -31,9 +33,15 @@ internal sealed class DashboardForm : RoundedPopupForm
     private readonly MetricWindowSelector windowSelector = new();
     private readonly RefreshCadenceButton refreshCadence = new();
     private readonly ToggleSwitch startupToggle = new();
+    private readonly Label updateStatusValue = TextLabel(9, Secondary);
+    private readonly Button updateHeaderButton = HeaderButton("\uE896", "检查更新");
+    private readonly Button updateActionButton = CommandButton("立即更新");
     private readonly ToolTip toolTip = new();
     private readonly Image applicationImage;
     private readonly Control ambientRow;
+    private readonly RowStyle updateRowStyle = new(SizeType.Absolute, 0);
+    private readonly RowStyle updateSeparatorStyle = new(SizeType.Absolute, 0);
+    private readonly TableLayoutPanel root;
     private UsageSnapshot lastSnapshot = UsageSnapshot.Empty(
         DateTimeOffset.Now,
         CollectionStatus.SessionsDirectoryMissing);
@@ -52,7 +60,7 @@ internal sealed class DashboardForm : RoundedPopupForm
         BackColor = Background;
         ForeColor = Primary;
         Font = new Font("Segoe UI Variable Text", 9f);
-        ClientSize = new Size(380, 408);
+        ClientSize = new Size(380, BaseClientHeight);
         StartPosition = FormStartPosition.Manual;
         ShowInTaskbar = false;
         KeyPreview = true;
@@ -68,11 +76,11 @@ internal sealed class DashboardForm : RoundedPopupForm
             executableIcon.Dispose();
         }
 
-        var root = new TableLayoutPanel
+        root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             ColumnCount = 1,
-            RowCount = 7,
+            RowCount = 9,
             BackColor = Background,
             Margin = Padding.Empty,
         };
@@ -82,6 +90,8 @@ internal sealed class DashboardForm : RoundedPopupForm
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 1));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 1));
+        root.RowStyles.Add(updateRowStyle);
+        root.RowStyles.Add(updateSeparatorStyle);
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
 
@@ -92,7 +102,9 @@ internal sealed class DashboardForm : RoundedPopupForm
         ambientRow = BuildAmbientRow();
         root.Controls.Add(ambientRow, 0, 4);
         root.Controls.Add(Separator(), 0, 5);
-        root.Controls.Add(BuildFooter(), 0, 6);
+        root.Controls.Add(BuildUpdateRow(), 0, 6);
+        root.Controls.Add(Separator(), 0, 7);
+        root.Controls.Add(BuildFooter(), 0, 8);
 
         windowSelector.SelectedSecondsChanged += seconds =>
         {
@@ -134,6 +146,8 @@ internal sealed class DashboardForm : RoundedPopupForm
 
     public event EventHandler? SettingsRequested;
     public event EventHandler? RefreshRequested;
+    public event EventHandler? CheckForUpdatesRequested;
+    public event EventHandler? InstallUpdateRequested;
     public event EventHandler? SessionsFolderRequested;
     public event EventHandler? ExitRequested;
     public event Action<int>? RefreshCadenceChanged;
@@ -205,6 +219,32 @@ internal sealed class DashboardForm : RoundedPopupForm
         }
     }
 
+    public void SetUpdateState(AppUpdateState state)
+    {
+        updateHeaderButton.Enabled = !state.IsBusy;
+        updateActionButton.Visible = state.Kind == AppUpdateKind.Available;
+        updateActionButton.Enabled = state.Kind == AppUpdateKind.Available;
+        updateStatusValue.ForeColor = state.Kind == AppUpdateKind.Failed ? Failure : Secondary;
+        updateStatusValue.Text = state.Kind switch
+        {
+            AppUpdateKind.Checking => "正在检查更新",
+            AppUpdateKind.UpToDate => state.Message ?? "已是最新版本",
+            AppUpdateKind.Available when state.Release is { } release =>
+                $"发现新版本 {release.TagName}",
+            AppUpdateKind.Installing => "正在下载并校验更新",
+            AppUpdateKind.Restarting => state.Message ?? "正在安装，应用将重新启动",
+            AppUpdateKind.Failed => state.Message ?? "更新失败，请稍后重试",
+            _ => string.Empty,
+        };
+        toolTip.SetToolTip(
+            updateHeaderButton,
+            state.Kind == AppUpdateKind.Available && state.Release is { } available
+                ? $"安装 {available.TagName}"
+                : "检查更新");
+
+        SetUpdateRowVisible(state.Kind != AppUpdateKind.Idle);
+    }
+
     public void ShowFromTray()
     {
         WindowState = FormWindowState.Normal;
@@ -248,7 +288,7 @@ internal sealed class DashboardForm : RoundedPopupForm
         };
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 44));
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 140));
 
         header.Paint += (_, eventArgs) => eventArgs.Graphics.DrawImage(
             applicationImage,
@@ -296,6 +336,8 @@ internal sealed class DashboardForm : RoundedPopupForm
         };
         var refreshButton = HeaderButton("\uE72C", "立即刷新");
         refreshButton.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
+        updateHeaderButton.Click += (_, _) => CheckForUpdatesRequested?.Invoke(this, EventArgs.Empty);
+        toolTip.SetToolTip(updateHeaderButton, "检查更新");
         var settingsButton = HeaderButton("\uE713", "打开设置");
         settingsButton.Click += (_, _) => SettingsRequested?.Invoke(this, EventArgs.Empty);
         var folderButton = HeaderButton("\uE8B7", "打开 Codex 会话目录");
@@ -305,6 +347,7 @@ internal sealed class DashboardForm : RoundedPopupForm
         minimizeButton.Click += (_, _) => HideToTray();
         toolTip.SetToolTip(minimizeButton, "最小化到通知区域");
         actions.Controls.Add(refreshButton);
+        actions.Controls.Add(updateHeaderButton);
         actions.Controls.Add(settingsButton);
         actions.Controls.Add(folderButton);
         actions.Controls.Add(minimizeButton);
@@ -412,6 +455,32 @@ internal sealed class DashboardForm : RoundedPopupForm
         return ambientStatus;
     }
 
+    private Control BuildUpdateRow()
+    {
+        var row = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            ColumnCount = 2,
+            BackColor = Background,
+            Padding = new Padding(16, 6, 12, 6),
+            Margin = Padding.Empty,
+        };
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 76));
+
+        updateStatusValue.Dock = DockStyle.Fill;
+        updateStatusValue.TextAlign = ContentAlignment.MiddleLeft;
+        updateStatusValue.AutoEllipsis = true;
+        updateStatusValue.AccessibleName = "更新状态";
+        row.Controls.Add(updateStatusValue, 0, 0);
+
+        updateActionButton.Dock = DockStyle.Fill;
+        updateActionButton.AccessibleName = "立即更新";
+        updateActionButton.Click += (_, _) => InstallUpdateRequested?.Invoke(this, EventArgs.Empty);
+        row.Controls.Add(updateActionButton, 1, 0);
+        return row;
+    }
+
     private Control BuildFooter()
     {
         var footer = new TableLayoutPanel
@@ -481,6 +550,26 @@ internal sealed class DashboardForm : RoundedPopupForm
         button.FlatAppearance.BorderSize = 0;
         button.FlatAppearance.MouseOverBackColor = Color.FromArgb(242, 242, 244);
         button.FlatAppearance.MouseDownBackColor = Color.FromArgb(232, 232, 234);
+        return button;
+    }
+
+    private static Button CommandButton(string text)
+    {
+        var button = new Button
+        {
+            Text = text,
+            AccessibleName = text,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Microsoft YaHei UI", 8.5f),
+            ForeColor = Color.White,
+            BackColor = InputAccent,
+            Cursor = Cursors.Hand,
+            Margin = Padding.Empty,
+            TabStop = true,
+        };
+        button.FlatAppearance.BorderSize = 0;
+        button.FlatAppearance.MouseOverBackColor = Color.FromArgb(0, 108, 226);
+        button.FlatAppearance.MouseDownBackColor = Color.FromArgb(0, 92, 196);
         return button;
     }
 
@@ -576,6 +665,27 @@ internal sealed class DashboardForm : RoundedPopupForm
     {
         Hide();
         WindowState = FormWindowState.Normal;
+    }
+
+    private void SetUpdateRowVisible(bool visible)
+    {
+        var nextHeight = visible ? UpdateRowHeight : 0;
+        if ((int)updateRowStyle.Height == nextHeight)
+        {
+            return;
+        }
+
+        var anchoredBottom = Bottom;
+        updateRowStyle.Height = nextHeight;
+        updateSeparatorStyle.Height = visible ? 1 : 0;
+        ClientSize = new Size(
+            ClientSize.Width,
+            BaseClientHeight + (visible ? UpdateRowHeight + 1 : 0));
+        if (Visible)
+        {
+            Top = anchoredBottom - Height;
+        }
+        root.PerformLayout();
     }
 
     private static string CollectionLabel(UsageSnapshot snapshot) => snapshot.Status switch
