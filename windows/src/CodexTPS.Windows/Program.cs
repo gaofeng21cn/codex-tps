@@ -5,6 +5,12 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (WindowsUpdateWorker.TryRun(args, out var updateExitCode))
+        {
+            Environment.ExitCode = updateExitCode;
+            return;
+        }
+
         using var mutex = new Mutex(initiallyOwned: true, @"Local\CodexTPS.Windows", out var created);
         if (!created)
         {

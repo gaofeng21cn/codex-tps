@@ -178,6 +178,10 @@ jobs:
 
           $signature = Get-AuthenticodeSignature $installer
           Write-Output "Windows Authenticode status: $($signature.Status)"
+      - name: Verify Windows in-app updater handoff
+        run: |
+          $version = $env:GITHUB_REF_NAME -replace '^v', ''
+          ./windows/scripts/verify-updater.ps1 -Version $version
       - uses: actions/upload-artifact@v7
         with:
           name: release-windows
@@ -213,7 +217,7 @@ jobs:
           cat >release-notes.md <<'EOF'
           ## Windows
 
-          Download `Codex-TPS-Windows-win-x64-Setup.exe` for the standard current-user installer. It installs under `%LOCALAPPDATA%\Programs\Codex TPS`, supports upgrades and uninstall, renders large waveform-prefixed live TPS as unframed native taskbar text, scales the readout with taskbar DPI, and safely recreates a closed dashboard when the tray or taskbar readout is opened again. The dashboard now automatically returns to the notification area when focus moves elsewhere and includes an explicit minimize-to-tray button. Light taskbars use pure black text and dark taskbars use white text for contrast. It also automatically starts one-click per-device pairing after Ambient Ops LAN discovery. The device private key is stored only as current-user DPAPI ciphertext; the shared NAS token is no longer required with Ambient Ops v0.1.4+. Windows may initially place the tray icon under the `^` overflow menu. The Windows package is currently not Authenticode-signed and may show an unknown-publisher warning.
+          Download `Codex-TPS-Windows-win-x64-Setup.exe` for the standard current-user installer. Windows now follows the same update flow as macOS: it checks GitHub after launch and every six hours, shows the same checking/current/available/installing/restarting/failure states, and installs only after the user clicks update. A temporary updater copy waits for the exact old PID to exit, verifies the release SHA-256 before and during handoff, runs the per-user installer silently, verifies the installed version, starts a distinct new process, and relaunches the usable installed version when an update fails. The Windows package is currently not Authenticode-signed and may show an unknown-publisher warning; SHA-256 verification does not replace Authenticode trust. The dashboard also returns to the notification area when focus moves elsewhere, includes an explicit minimize-to-tray button, and automatically starts one-click per-device pairing after Ambient Ops LAN discovery.
 
           ## macOS
 

@@ -140,12 +140,12 @@ remain excluded until a verifiable UUIDv7 child turn begins.
 - Contains no analytics SDK, account login, or conversation-data upload
 - Keeps rolling usage state in memory only
 
-The app checks for a release after launch and every six hours while running. A
-new version is installed only after the user clicks **Update now**. The DMG must
-match the release's published SHA-256 checksum and expected version before the
-installed app is replaced. The updater then hands off from the exact old process
-to a distinct new process; if the replacement cannot remain running, it restores
-and relaunches the previous app.
+Both native apps check for a release after launch and every six hours while
+running. A new version is installed only after the user clicks **Update now**.
+The platform package must match the release's published SHA-256 checksum and
+expected version before the installed app is replaced. Each updater then hands
+off from the exact old process to a distinct new process; if the replacement
+cannot remain running, it restores or relaunches the usable installed app.
 
 Codex TPS is operational telemetry, not billing data. It reports usage visible
 in local Codex logs and cannot prove which API key was charged. Log formats are
@@ -266,6 +266,12 @@ Ambient Ops token 使用 Windows DPAPI 加密保存，并可配置当前用户�
 构建、SHA-256 校验、便携版安装和仍需 Windows 真机验证的边界见
 [`windows/README.md`](windows/README.md)。Windows 安装器目前没有
 Authenticode 签名，可能显示未知发布者；macOS DMG 仍保持 Developer ID 签名和公证。
+
+Windows 与 macOS 采用同一套更新逻辑：启动后及每 6 小时自动检查，发现新版后
+由用户确认，显示检查中、已是最新、发现新版、安装/重启和失败状态。Windows 会
+下载安装包及其 SHA-256，临时复制更新助手，等待当前 PID 退出后静默升级，核对
+安装后的版本并启动新进程；失败时重新启动仍可用的已安装版本。平台差异只保留在
+DMG/App 替换与 Inno Setup 当前用户安装这两个安装事务中。
 
 ### 一键安装
 
