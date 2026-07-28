@@ -99,43 +99,32 @@ public actor SessionScanner {
   private func discoverSessionFiles(now: Date) throws -> [SessionFile] {
     let cutoff = now.addingTimeInterval(-activeFileHorizon)
     var files: [SessionFile] = []
-
-    for dayOffset in [-1, 0] {
-      guard let date = calendar.date(byAdding: .day, value: dayOffset, to: now) else { continue }
-      let components = calendar.dateComponents([.year, .month, .day], from: date)
-      guard let year = components.year, let month = components.month, let day = components.day
-      else { continue }
-
-      let directory =
-        sessionsRoot
-        .appendingPathComponent(String(format: "%04d", year), isDirectory: true)
-        .appendingPathComponent(String(format: "%02d", month), isDirectory: true)
-        .appendingPathComponent(String(format: "%02d", day), isDirectory: true)
-
-      guard fileManager.fileExists(atPath: directory.path) else { continue }
-      let urls = try fileManager.contentsOfDirectory(
-        at: directory,
-        includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey, .isRegularFileKey],
-        options: [.skipsHiddenFiles]
-      )
-
-      for url in urls where url.pathExtension == "jsonl" {
-        let values = try url.resourceValues(forKeys: [
-          .contentModificationDateKey, .fileSizeKey, .isRegularFileKey,
-        ])
-        guard values.isRegularFile == true else { continue }
-        let modifiedAt = values.contentModificationDate ?? .distantPast
-        guard modifiedAt >= cutoff || cursors[url] != nil else { continue }
-        files.append(
-          SessionFile(
-            url: url,
-            size: UInt64(max(values.fileSize ?? 0, 0)),
-            modifiedAt: modifiedAt
-          ))
-      }
+    let resourceKeys: Set<URLResourceKey> = [
+      .contentModificationDateKey, .fileSizeKey, .isRegularFileKey,
+    ]
+    guard let enumerator = fileManager.enumerator(
+      at: sessionsRoot,
+      includingPropertiesForKeys: Array(resourceKeys),
+      options: [.skipsHiddenFiles, .skipsPackageDescendants]
+    ) else {
+      return files
     }
 
-    return files.sorted { $0.url.lastPathComponent < $1.url.lastPathComponent }
+    for case let url as URL in enumerator where url.pathExtension == "jsonl" {
+      let values = try url.resourceValues(forKeys: resourceKeys)
+      guard values.isRegularFile == true else { continue }
+      let modifiedAt = values.contentModificationDate ?? .distantPast
+      guard modifiedAt >= cutoff || cursors[url] != nil else { continue }
+      files.append(
+        SessionFile(
+          url: url,
+          size: UInt64(max(values.fileSize ?? 0, 0)),
+          modifiedAt: modifiedAt
+        )
+      )
+    }
+
+    return files.sorted { $0.url.path < $1.url.path }
   }
 
   private func readAppendedContent(from file: SessionFile, retentionStart: Date) throws {

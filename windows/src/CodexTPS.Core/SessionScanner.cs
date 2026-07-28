@@ -118,29 +118,18 @@ public sealed class SessionScanner
     {
         var cutoff = now.AddMinutes(-65);
         var files = new List<SessionFile>();
-        foreach (var dayOffset in new[] { -1, 0 })
+        foreach (var path in Directory.EnumerateFiles(
+                     SessionsRoot,
+                     "*.jsonl",
+                     SearchOption.AllDirectories))
         {
-            var day = now.AddDays(dayOffset);
-            var directory = Path.Combine(
-                SessionsRoot,
-                day.Year.ToString("0000"),
-                day.Month.ToString("00"),
-                day.Day.ToString("00"));
-            if (!Directory.Exists(directory))
+            var info = new FileInfo(path);
+            var modifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
+            if (modifiedAt < cutoff && !cursors.ContainsKey(path))
             {
                 continue;
             }
-
-            foreach (var path in Directory.EnumerateFiles(directory, "*.jsonl"))
-            {
-                var info = new FileInfo(path);
-                var modifiedAt = new DateTimeOffset(info.LastWriteTimeUtc, TimeSpan.Zero);
-                if (modifiedAt < cutoff && !cursors.ContainsKey(path))
-                {
-                    continue;
-                }
-                files.Add(new SessionFile(path, Math.Max(info.Length, 0), modifiedAt));
-            }
+            files.Add(new SessionFile(path, Math.Max(info.Length, 0), modifiedAt));
         }
         return files.OrderBy(item => item.Path, StringComparer.OrdinalIgnoreCase).ToList();
     }

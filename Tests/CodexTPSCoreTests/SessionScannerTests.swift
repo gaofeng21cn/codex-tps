@@ -4,6 +4,41 @@ import XCTest
 @testable import CodexTPSCore
 
 final class SessionScannerTests: XCTestCase {
+  func testScannerIncludesRecentlyModifiedSessionFileFromOlderDirectory() async throws {
+    let temporaryRoot = FileManager.default.temporaryDirectory
+      .appendingPathComponent("codex-tps-tests-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: temporaryRoot) }
+
+    let now = Date()
+    let calendar = Calendar(identifier: .gregorian)
+    let olderDate = try XCTUnwrap(calendar.date(byAdding: .day, value: -2, to: now))
+    let components = calendar.dateComponents([.year, .month, .day], from: olderDate)
+    let sessions =
+      temporaryRoot
+      .appendingPathComponent("sessions", isDirectory: true)
+      .appendingPathComponent(String(format: "%04d", components.year!), isDirectory: true)
+      .appendingPathComponent(String(format: "%02d", components.month!), isDirectory: true)
+      .appendingPathComponent(String(format: "%02d", components.day!), isDirectory: true)
+    try FileManager.default.createDirectory(at: sessions, withIntermediateDirectories: true)
+
+    let timestamp = now.addingTimeInterval(-5).formatted(.iso8601)
+    let log = sessions.appendingPathComponent("rollout-session-a.jsonl")
+    let contents =
+      [
+        #"{"timestamp":"\#(timestamp)","type":"session_meta","payload":{"id":"session-a","model_provider":"test-provider"}}"#,
+        #"{"timestamp":"\#(timestamp)","type":"turn_context","payload":{"model":"gpt-test"}}"#,
+        #"{"timestamp":"\#(timestamp)","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}"#,
+      ].joined(separator: "\n") + "\n"
+    try Data(contents.utf8).write(to: log)
+    try FileManager.default.setAttributes([.modificationDate: now], ofItemAtPath: log.path)
+
+    let snapshot = await SessionScanner(codexHome: temporaryRoot, calendar: calendar).refresh(now: now)
+
+    XCTAssertEqual(snapshot.oneMinute.requestCount, 1)
+    XCTAssertEqual(snapshot.oneMinute.totalTokens, 120)
+    XCTAssertEqual(snapshot.activeSessions, 1)
+  }
+
   func testScannerReadsOnlyAppendedEventsAfterBootstrap() async throws {
     let temporaryRoot = FileManager.default.temporaryDirectory
       .appendingPathComponent("codex-tps-tests-\(UUID().uuidString)", isDirectory: true)

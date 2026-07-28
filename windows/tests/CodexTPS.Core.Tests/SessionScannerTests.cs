@@ -9,6 +9,30 @@ public sealed class SessionScannerTests : IDisposable
         $"codex-tps-windows-tests-{Guid.NewGuid():N}");
 
     [Fact]
+    public void IncludesRecentlyModifiedSessionFileFromOlderDirectory()
+    {
+        var now = DateTimeOffset.Now;
+        var directory = SessionsDirectory(now.AddDays(-2));
+        Directory.CreateDirectory(directory);
+        var log = Path.Combine(directory, "rollout-session-a.jsonl");
+        var timestamp = now.AddSeconds(-5).ToString("O");
+        File.WriteAllText(
+            log,
+            string.Join('\n',
+                At("""{"timestamp":"$TIMESTAMP","type":"session_meta","payload":{"id":"session-a","model_provider":"test-provider"}}""", timestamp),
+                At("""{"timestamp":"$TIMESTAMP","type":"turn_context","payload":{"model":"gpt-test"}}""", timestamp),
+                At("""{"timestamp":"$TIMESTAMP","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120},"last_token_usage":{"input_tokens":100,"output_tokens":20,"total_tokens":120}}}}""", timestamp),
+                string.Empty));
+        File.SetLastWriteTimeUtc(log, now.UtcDateTime);
+
+        var snapshot = new SessionScanner(root).Refresh(now);
+
+        Assert.Equal(1, snapshot.OneMinute.RequestCount);
+        Assert.Equal(120, snapshot.OneMinute.TotalTokens);
+        Assert.Equal(1, snapshot.ActiveSessions);
+    }
+
+    [Fact]
     public void ReadsOnlyAppendedEventsAfterBootstrap()
     {
         var now = DateTimeOffset.Now;
