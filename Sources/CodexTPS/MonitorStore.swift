@@ -33,6 +33,7 @@ final class MonitorStore: ObservableObject {
   private var ambientPairingEndpoint: URL?
   private var openedAmbientPairingRequestID: String?
   private var lastAmbientSnapshot: AmbientOpsAgentSnapshot?
+  private var hostTelemetry = HostTelemetrySampler()
   private var ambientPetTracker = AmbientOpsPetTracker()
   private static let selectedWindowDefaultsKey = "selectedMetricWindow"
   private static let refreshCadenceDefaultsKey = "refreshCadenceSeconds"
@@ -283,6 +284,7 @@ final class MonitorStore: ObservableObject {
           usage: usage,
           identity: identity,
           fallback: lastAmbientSnapshot,
+          cpuPercent: hostTelemetry.sampleCPUPercent(),
           pet: pet
         )
         if let token {

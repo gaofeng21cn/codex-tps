@@ -134,12 +134,14 @@ public struct AmbientOpsAgentSnapshot: Codable, Equatable, Sendable {
   public let oneMinute: AmbientOpsWindowSnapshot
   public let fiveMinutes: AmbientOpsWindowSnapshot
   public let activeSessions: Int
+  public let cpuPercent: Double?
   public let pet: AmbientOpsPetSnapshot?
 
   public init(
     usage: UsageSnapshot,
     identity: AmbientOpsMachineIdentity,
     fallback: AmbientOpsAgentSnapshot? = nil,
+    cpuPercent: Double? = nil,
     pet: AmbientOpsPetSnapshot? = nil
   ) {
     schemaVersion = 2
@@ -147,6 +149,7 @@ public struct AmbientOpsAgentSnapshot: Codable, Equatable, Sendable {
     platform = identity.platform
     generatedAt = usage.generatedAt
     activeSessions = usage.status == .ready ? usage.activeSessions : fallback?.activeSessions ?? 0
+    self.cpuPercent = usage.status == .ready ? cpuPercent : fallback?.cpuPercent
     self.pet = pet
 
     if usage.status == .ready {

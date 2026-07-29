@@ -21,6 +21,7 @@ struct CodexTPSAgentCommand {
       preferredPetID: configuration.preferredPetID
     )
     var lastSuccessfulSnapshot: AmbientOpsAgentSnapshot?
+    var hostTelemetry = HostTelemetrySampler()
     var petTracker = AmbientOpsPetTracker()
     var consecutiveFailures = 0
     var discoveredServices: [AmbientOpsService] = []
@@ -39,6 +40,7 @@ struct CodexTPSAgentCommand {
         usage: usage,
         identity: configuration.identity,
         fallback: lastSuccessfulSnapshot,
+        cpuPercent: hostTelemetry.sampleCPUPercent(),
         pet: pet
       )
       if usage.status == .ready {

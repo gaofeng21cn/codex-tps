@@ -30,6 +30,23 @@ final class AmbientOpsPushTests: XCTestCase {
     XCTAssertEqual(payload.oneMinute.outputTokens, 120)
     XCTAssertEqual(payload.oneMinute.reasoningOutputTokens, 60)
     XCTAssertEqual(payload.oneMinute.requests, 2)
+    XCTAssertNil(payload.cpuPercent)
+  }
+
+  func testIncludesOptionalHostCPUOnlyWhenSampled() throws {
+    let identity = try AmbientOpsMachineIdentity(
+      machineID: "primary-mac",
+      machineName: "Primary Mac",
+      platform: "macOS"
+    )
+    let payload = AmbientOpsAgentSnapshot(
+      usage: usageSnapshot(status: .ready),
+      identity: identity,
+      cpuPercent: 42.5
+    )
+    let data = try JSONEncoder().encode(payload)
+    let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    XCTAssertEqual(object["cpuPercent"] as? Double, 42.5)
   }
 
   func testCollectionFailureRetainsLastSuccessfulValues() throws {
