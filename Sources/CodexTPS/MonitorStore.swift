@@ -28,6 +28,7 @@ final class MonitorStore: ObservableObject {
   private var ambientPushTask: Task<Void, Never>?
   private var ambientRetryTask: Task<Void, Never>?
   private var ambientFailureCount = 0
+  private var ambientBearerTokenRejected = false
   private var ambientService: AmbientOpsService?
   private var ambientPairingSession: AmbientOpsPairingSession?
   private var ambientPairingEndpoint: URL?
@@ -204,6 +205,7 @@ final class MonitorStore: ObservableObject {
       guard let self, ambientEnabled, ambientAutoDiscover else { return }
       if ambientService?.endpoint != service.endpoint {
         resetAmbientPairing()
+        ambientBearerTokenRejected = false
       }
       ambientService = service
       UserDefaults.standard.set(service.instanceID, forKey: Self.ambientInstanceIDDefaultsKey)
@@ -216,6 +218,7 @@ final class MonitorStore: ObservableObject {
     ambientPushTask?.cancel()
     ambientPushTask = nil
     resetAmbientRetry()
+    ambientBearerTokenRejected = false
 
     guard ambientEnabled else {
       ambientDiscovery.stop()
@@ -270,8 +273,9 @@ final class MonitorStore: ObservableObject {
       defer { ambientPushTask = nil }
       ambientConnection = .pushing(name: name, endpoint: endpoint)
       do {
-        let token = try ambientKeychain.token()
-        if token == nil, ambientAutoDiscover, service?.supportsPairing != true {
+        let pairingSupported = ambientAutoDiscover && service?.supportsPairing == true
+        let token = ambientBearerTokenRejected ? nil : try ambientKeychain.token()
+        if token == nil, ambientAutoDiscover, !pairingSupported {
           ambientConnection = .failed(message: "此 Ambient Ops 不支持安全配对")
           return
         }
@@ -293,7 +297,22 @@ final class MonitorStore: ObservableObject {
             token: token,
             identity: identity
           )
-          try await AmbientOpsPushClient(request: request).push(payload, petAsset: petAsset)
+          do {
+            try await AmbientOpsPushClient(request: request).push(payload, petAsset: petAsset)
+          } catch let error as AmbientOpsPushError
+            where pairingSupported && (error == .server(401) || error == .server(403))
+          {
+            ambientBearerTokenRejected = true
+            let deviceKey = try ambientKeychain.deviceKey()
+            try await pushSignedAmbient(
+              payload,
+              petAsset: petAsset,
+              endpoint: endpoint,
+              name: name,
+              identity: identity,
+              deviceKey: deviceKey
+            )
+          }
         } else {
           let deviceKey = try ambientKeychain.deviceKey()
           try await pushSignedAmbient(
