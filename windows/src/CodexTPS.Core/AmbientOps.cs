@@ -214,12 +214,14 @@ public sealed record AmbientOpsAgentSnapshot(
     AmbientOpsWindowSnapshot OneMinute,
     AmbientOpsWindowSnapshot FiveMinutes,
     int ActiveSessions,
+    double? CpuPercent,
     AmbientOpsPetSnapshot? Pet)
 {
     public static AmbientOpsAgentSnapshot FromUsage(
         UsageSnapshot usage,
         AmbientOpsMachineIdentity identity,
         AmbientOpsAgentSnapshot? fallback = null,
+        double? cpuPercent = null,
         AmbientOpsPetSnapshot? pet = null)
     {
         var live = usage.Status == CollectionStatus.Ready;
@@ -237,6 +239,7 @@ public sealed record AmbientOpsAgentSnapshot(
                 ? AmbientOpsWindowSnapshot.FromMetrics(usage.FiveMinutes)
                 : fallback.FiveMinutes,
             live ? usage.ActiveSessions : fallback?.ActiveSessions ?? 0,
+            live ? cpuPercent : fallback?.CpuPercent,
             pet);
     }
 
@@ -247,6 +250,11 @@ public sealed record AmbientOpsAgentSnapshot(
         _ => string.Empty,
     };
 }
+
+public sealed record AmbientOpsMachineObservation(
+    AmbientOpsMachineIdentity Identity,
+    AmbientOpsAgentSnapshot Snapshot,
+    AmbientOpsPetAsset? PetAsset);
 
 public sealed class AmbientOpsPushClient
 {

@@ -215,13 +215,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat >release-notes.md <<'EOF'
-          ## Windows
-
-          Download `Codex-TPS-Windows-win-x64-Setup.exe` for the standard current-user installer. Windows now follows the same update flow as macOS: it checks GitHub after launch and every six hours, shows the same checking/current/available/installing/restarting/failure states, and installs only after the user clicks update. A temporary updater copy waits for the exact old PID to exit, verifies the release SHA-256 before and during handoff, runs the per-user installer silently, verifies the installed version, starts a distinct new process, and relaunches the usable installed version when an update fails. The Windows package is currently not Authenticode-signed and may show an unknown-publisher warning; SHA-256 verification does not replace Authenticode trust. The dashboard also returns to the notification area when focus moves elsewhere, includes an explicit minimize-to-tray button, and automatically starts one-click per-device pairing after Ambient Ops LAN discovery.
-
           ## macOS
 
-          `Codex-TPS.dmg` is signed with Apple Developer ID, notarized, stapled, and checksum verified. The in-app updater stops the exact validated running PID before sweeping sibling processes, launches the single-instance app without `open -n`, verifies a distinct replacement PID, and restores the previous app if relaunch fails. Keychain reads distinguish a missing credential from a locked or denied keychain, cache successful credentials for the running session, and retry with bounded exponential backoff without restarting LAN discovery. Codex TPS automatically creates a per-device P-256 key in the macOS Keychain, opens the Ambient Ops approval page after LAN discovery, and starts signed aggregate pushes after the six-digit code is approved. Ambient Ops v0.1.4+ no longer requires Mac users to copy the shared push token.
+          Codex TPS now advertises a read-only `_codex-tps._tcp` Direct provider. Ambient Ops can discover this Mac and display its aggregate TPS, active sessions, host CPU, network throughput, and selected Pet without deploying a Gateway. Conversation content and session identifiers are never served. `Codex-TPS.dmg` remains Developer ID signed, notarized, stapled, and checksum verified.
+
+          ## Windows
+
+          The taskbar readout is tighter and uses a clearer semibold system font. Gateway discovery and signed aggregate pushes remain available. The Direct LAN server is not enabled on Windows in this release. The installer is still not Authenticode-signed and may show an unknown-publisher warning; verify the published SHA-256 before running it.
           EOF
           gh release create "$GITHUB_REF_NAME" \
             release-assets/Codex-TPS.dmg \

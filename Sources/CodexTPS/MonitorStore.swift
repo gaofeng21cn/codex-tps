@@ -22,6 +22,7 @@ final class MonitorStore: ObservableObject {
   private let scanner: SessionScanner
   private let ambientPetCatalog: AmbientOpsPetAssetCatalog
   private let ambientMachineID: String
+  private let observationStore = AmbientOpsMachineObservationStore()
   private let ambientDiscovery = AmbientOpsDiscovery()
   private let ambientKeychain = AmbientOpsKeychain()
   private var refreshLoop: Task<Void, Never>?
@@ -33,7 +34,9 @@ final class MonitorStore: ObservableObject {
   private var ambientPairingSession: AmbientOpsPairingSession?
   private var ambientPairingEndpoint: URL?
   private var openedAmbientPairingRequestID: String?
-  private var lastAmbientSnapshot: AmbientOpsAgentSnapshot?
+  private var lastObservedSnapshot: AmbientOpsAgentSnapshot?
+  private var latestObservation: AmbientOpsMachineObservation?
+  private var directServer: AmbientOpsDirectServer?
   private var hostTelemetry = HostTelemetrySampler()
   private var ambientPetTracker = AmbientOpsPetTracker()
   private static let selectedWindowDefaultsKey = "selectedMetricWindow"
@@ -66,6 +69,15 @@ final class MonitorStore: ObservableObject {
     ambientPetCatalog = AmbientOpsPetAssetCatalog(codexHome: codexHome)
     sessionsURL = codexHome.appendingPathComponent("sessions", isDirectory: true)
     snapshot = .empty(at: Date(), status: .ready)
+    if let identity = try? AmbientOpsMachineIdentity.localMachine(machineID: ambientMachineID) {
+      directServer = AmbientOpsDirectServer(
+        observationStore: observationStore,
+        identity: identity,
+        serverVersion: Bundle.main.object(
+          forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String ?? "dev"
+      )
+    }
     refreshLaunchAtLoginStatus()
     configureAmbientDiscovery()
   }
@@ -78,6 +90,7 @@ final class MonitorStore: ObservableObject {
 
   func start() {
     guard refreshLoop == nil else { return }
+    directServer?.start()
     scheduleRefreshLoop()
     refreshAmbientConfiguration()
   }
@@ -113,7 +126,30 @@ final class MonitorStore: ObservableObject {
     let nextSnapshot = await scanner.refresh()
     snapshot = nextSnapshot
     isRefreshing = false
-    pushAmbient(nextSnapshot)
+    guard let identity = try? AmbientOpsMachineIdentity.localMachine(machineID: ambientMachineID)
+    else { return }
+    let petAsset = ambientPet == .localCodex ? await ambientPetCatalog.currentAsset() : nil
+    let pet = petAsset.map {
+      ambientPetTracker.snapshot(definition: $0.definition, usage: nextSnapshot)
+    }
+    let payload = AmbientOpsAgentSnapshot(
+      usage: nextSnapshot,
+      identity: identity,
+      fallback: lastObservedSnapshot,
+      cpuPercent: hostTelemetry.sampleCPUPercent(),
+      pet: pet
+    )
+    let observation = AmbientOpsMachineObservation(
+      identity: identity,
+      snapshot: payload,
+      petAsset: petAsset
+    )
+    latestObservation = observation
+    if nextSnapshot.status == .ready {
+      lastObservedSnapshot = payload
+    }
+    await observationStore.update(observation)
+    pushAmbient(observation)
   }
 
   func setAmbientEnabled(_ enabled: Bool) {
@@ -132,9 +168,7 @@ final class MonitorStore: ObservableObject {
     ambientService = nil
     resetAmbientPairing()
     refreshAmbientConfiguration()
-    if ambientEnabled {
-      Task { await refresh() }
-    }
+    Task { await refresh() }
   }
 
   func setAmbientManualURL(_ value: String) {
@@ -150,9 +184,7 @@ final class MonitorStore: ObservableObject {
     ambientPet = pet
     ambientPetTracker = AmbientOpsPetTracker()
     UserDefaults.standard.set(pet.rawValue, forKey: Self.ambientPetDefaultsKey)
-    if ambientEnabled {
-      Task { await refresh() }
-    }
+    Task { await refresh() }
   }
 
   func rediscoverAmbientOps() {
@@ -210,7 +242,9 @@ final class MonitorStore: ObservableObject {
       ambientService = service
       UserDefaults.standard.set(service.instanceID, forKey: Self.ambientInstanceIDDefaultsKey)
       ambientConnection = .ready(name: service.name, endpoint: service.endpoint)
-      pushAmbient(snapshot)
+      if let latestObservation {
+        pushAmbient(latestObservation)
+      }
     }
   }
 
@@ -253,7 +287,7 @@ final class MonitorStore: ObservableObject {
     return endpoint
   }
 
-  private func pushAmbient(_ usage: UsageSnapshot) {
+  private func pushAmbient(_ observation: AmbientOpsMachineObservation) {
     guard ambientEnabled, ambientPushTask == nil, ambientRetryTask == nil else { return }
     let service = ambientService
     let endpoint: URL?
@@ -266,8 +300,6 @@ final class MonitorStore: ObservableObject {
       name = endpoint?.host ?? "Ambient Ops"
     }
     guard let endpoint else { return }
-    let reportLocalPet = ambientPet == .localCodex
-
     ambientPushTask = Task { [weak self] in
       guard let self else { return }
       defer { ambientPushTask = nil }
@@ -279,18 +311,9 @@ final class MonitorStore: ObservableObject {
           ambientConnection = .failed(message: "此 Ambient Ops 不支持安全配对")
           return
         }
-        let petAsset = reportLocalPet ? await ambientPetCatalog.currentAsset() : nil
-        let pet = petAsset.map {
-          ambientPetTracker.snapshot(definition: $0.definition, usage: usage)
-        }
-        let identity = try AmbientOpsMachineIdentity.localMachine(machineID: ambientMachineID)
-        let payload = AmbientOpsAgentSnapshot(
-          usage: usage,
-          identity: identity,
-          fallback: lastAmbientSnapshot,
-          cpuPercent: hostTelemetry.sampleCPUPercent(),
-          pet: pet
-        )
+        let identity = observation.identity
+        let payload = observation.snapshot
+        let petAsset = observation.petAsset
         if let token {
           let request = try AmbientOpsPushRequest(
             endpoint: endpoint,
@@ -323,9 +346,6 @@ final class MonitorStore: ObservableObject {
             identity: identity,
             deviceKey: deviceKey
           )
-        }
-        if usage.status == .ready {
-          lastAmbientSnapshot = payload
         }
         resetAmbientRetry()
         ambientConnection = .live(name: name, endpoint: endpoint, pushedAt: Date())
@@ -456,7 +476,9 @@ final class MonitorStore: ObservableObject {
         ambientConnection = .discovering
         ambientDiscovery.start(preferredInstanceID: nil)
       } else {
-        pushAmbient(snapshot)
+        if let latestObservation {
+          pushAmbient(latestObservation)
+        }
       }
     }
   }

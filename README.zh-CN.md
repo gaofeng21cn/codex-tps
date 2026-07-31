@@ -139,9 +139,13 @@ WSL UNC 路径，例如 `\\wsl.localhost\Ubuntu\home\<user>\.codex`。
 [Ambient Ops](https://github.com/gaofeng21cn/ambient-ops) 用于把多台电脑上的 Codex
 汇总指标和局域网网络状态集中显示在浏览器或 Android 常驻屏上。
 
-Codex TPS 默认可通过 `_ambient-ops._tcp.local` 自动发现服务端。首次连接时，
-桌面应用会在本机生成独立设备密钥并打开批准页；用户核对六位配对码后，应用开始
-发送签名快照，不需要复制共享令牌。
+macOS 版 Codex TPS 会发布 `_codex-tps._tcp.local` 和只读本机状态端点，Ambient
+Ops 无需单独部署 Gateway 即可显示这台 Mac。Direct 只提供汇总 TPS、活跃会话数、
+主机 CPU、网络吞吐以及所选 Pet 资源；Windows 本版尚未发布 Direct 服务。
+
+舰队模式下，Codex TPS 可通过 `_ambient-ops._tcp.local` 自动发现 Gateway。首次连接
+时，桌面应用会在本机生成独立设备密钥并打开批准页；用户核对六位配对码后，应用
+开始发送签名快照，不需要复制共享令牌。
 
 macOS 私钥保存在 Keychain，Windows 私钥只以当前用户 DPAPI 密文保存。Ambient
 Ops 仅保存对应公钥。上报内容只包括：
@@ -158,7 +162,8 @@ Ops 仅保存对应公钥。上报内容只包括：
 ### 隐私边界
 
 - 只解析统计和去重所需的结构化事件，不读取或展示对话正文。
-- 默认网络访问仅用于检查和下载 GitHub 发布版本。
+- 网络访问用于检查和下载 GitHub 发布版本；macOS 还会在局域网广播只含汇总数据的
+  Direct 服务。
 - 启用 Ambient Ops 后，只在用户选择的局域网服务端上报允许清单内的汇总指标。
 - 没有分析 SDK、账户系统或云端会话同步。
 - 本机日志格式属于实现依赖；未来 Codex 版本变化可能需要更新解析器。

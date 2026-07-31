@@ -59,7 +59,7 @@ already present in local session logs easier to see.
 - Remembered menu-bar window, manual refresh, session-folder access, and launch at login
 - User-confirmed, checksum-verified GitHub Release updates
 - A JSON snapshot command for scripts and integrations
-- Optional Ambient Ops discovery and aggregate-only LAN pushes
+- Ambient Ops Direct discovery on macOS, plus optional aggregate-only Gateway pushes
 
 Codex normally records usage after a model request completes, so the readout represents
 completion-time throughput rather than per-streaming-chunk speed.
@@ -143,9 +143,15 @@ accessible WSL UNC path such as `\\wsl.localhost\Ubuntu\home\<user>\.codex`.
 state from multiple computers with trusted-LAN network telemetry for browser and
 Android ambient displays.
 
-Codex TPS can discover `_ambient-ops._tcp.local` automatically. On first connection,
-the desktop app creates a local per-device key and opens the approval page. After the
-user verifies the six-digit code, signed pushes begin without copying a shared token.
+On macOS, Codex TPS publishes `_codex-tps._tcp.local` and a read-only local status
+endpoint so Ambient Ops can display this Mac without a separate Gateway. The Direct
+provider exposes only aggregate TPS, active sessions, host CPU and network throughput,
+and the selected pet asset. Windows does not publish the Direct provider yet.
+
+For fleet mode, Codex TPS discovers `_ambient-ops._tcp.local` automatically. On first
+connection, the desktop app creates a local per-device key and opens the approval page.
+After the user verifies the six-digit code, signed pushes begin without copying a
+shared token.
 
 The private key stays in macOS Keychain or as current-user DPAPI ciphertext on Windows.
 Ambient Ops stores only the corresponding public key. The payload is limited to:
@@ -164,7 +170,8 @@ HTTP(S) endpoint from settings.
 
 - Parses only structural events required for accounting and deduplication.
 - Does not read or render conversation bodies.
-- Uses the network by default only for GitHub Release checks and downloads.
+- Uses the network for GitHub Release checks and, on macOS, the aggregate-only local
+  Direct provider advertised on the LAN.
 - Sends only allowlisted aggregates when Ambient Ops is enabled.
 - Includes no analytics SDK, account system, or cloud session synchronization.
 - Treats the Codex log format as an implementation dependency that may evolve.

@@ -31,4 +31,28 @@ final class HostTelemetryTests: XCTestCase {
       accuracy: 0.001
     )
   }
+
+  func testNetworkTelemetryUsesDecimalMegabitsAndElapsedTime() throws {
+    let sampledAt = Date(timeIntervalSince1970: 1_000)
+    let telemetry = try XCTUnwrap(
+      HostNetworkTelemetrySampler.telemetry(
+        receivedDelta: 25_000_000,
+        sentDelta: 2_500_000,
+        elapsedSeconds: 2,
+        sampledAt: sampledAt
+      )
+    )
+
+    XCTAssertEqual(telemetry.downloadMbps, 100, accuracy: 0.001)
+    XCTAssertEqual(telemetry.uploadMbps, 10, accuracy: 0.001)
+    XCTAssertEqual(telemetry.sampledAt, sampledAt)
+    XCTAssertNil(
+      HostNetworkTelemetrySampler.telemetry(
+        receivedDelta: 1,
+        sentDelta: 1,
+        elapsedSeconds: 0,
+        sampledAt: sampledAt
+      )
+    )
+  }
 }
