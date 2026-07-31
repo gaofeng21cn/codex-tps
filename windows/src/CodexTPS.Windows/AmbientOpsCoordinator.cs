@@ -30,6 +30,7 @@ internal sealed class AmbientOpsCoordinator
     private readonly AmbientOpsPushClient pushClient = new();
     private readonly AmbientOpsPairingClient pairingClient = new();
     private readonly AmbientOpsPetTracker petTracker = new();
+    private readonly HostCpuTelemetrySampler cpuSampler = new();
     private IReadOnlyList<AmbientOpsService> discoveredServices = [];
     private AmbientOpsService? selectedService;
     private AmbientOpsServiceSelector? selector;
@@ -132,8 +133,9 @@ internal sealed class AmbientOpsCoordinator
         var payload = AmbientOpsAgentSnapshot.FromUsage(
             usage,
             identity,
-            lastSuccessfulSnapshot,
-            pet);
+            fallback: lastSuccessfulSnapshot,
+            cpuPercent: cpuSampler.SampleCpuPercent(),
+            pet: pet);
 
         try
         {
