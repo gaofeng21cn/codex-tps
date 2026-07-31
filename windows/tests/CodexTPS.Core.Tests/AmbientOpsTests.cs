@@ -75,6 +75,18 @@ public sealed class AmbientOpsTests
     }
 
     [Fact]
+    public void IncludesHostCpuInAggregatePayload()
+    {
+        var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");
+        var payload = AmbientOpsAgentSnapshot.FromUsage(Usage(), identity, cpuPercent: 37.5);
+        var json = JsonSerializer.Serialize(payload, AmbientOpsPushClient.SerializerOptions);
+        using var document = JsonDocument.Parse(json);
+
+        Assert.Equal(37.5, payload.CpuPercent);
+        Assert.Equal(37.5, document.RootElement.GetProperty("cpuPercent").GetDouble());
+    }
+
+    [Fact]
     public async Task BuildsAuthenticatedRequestWithoutConversationContent()
     {
         var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");
