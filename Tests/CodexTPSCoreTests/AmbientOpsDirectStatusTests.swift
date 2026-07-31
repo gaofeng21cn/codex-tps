@@ -55,6 +55,7 @@ struct AmbientOpsDirectStatusTests {
     #expect(status.network.status == "unavailable")
     #expect(status.overallStatus == "live")
     #expect(status.machines.count == 1)
+    #expect(status.machines[0].loadVisualState.modelVersion == 1)
     #expect(status.machines[0].loadVisualState.state == "constrained")
     #expect(status.machines[0].cachePercent == 80)
   }
@@ -129,6 +130,29 @@ struct AmbientOpsDirectStatusTests {
     #expect(status.codex.cpuReportedMachineCount == 0)
     #expect(status.machines[0].loadVisualState.state == "heavy")
     #expect(status.machines[0].loadVisualState.pressure == 0)
+  }
+
+  @Test
+  func loadVisualModelV1MatchesTheCrossPlatformContractVectors() {
+    let vectors: [(String, Double, Double, Double?, String, Double, Int)] = [
+      ("quiet", 0, 0, nil, "quiet", 0, 0),
+      ("active", 6_000, 4, 42, "active", 0.3428208823027626, 2),
+      ("heavy", 60_000, 10, nil, "heavy", 0.9533333333333334, 3),
+      ("constrained", 60_000, 10, 97, "constrained", 0.9567333333333334, 3),
+    ]
+
+    #expect(AmbientOpsLoadModel.modelVersion == 1)
+    for vector in vectors {
+      let visual = AmbientOpsLoadModel.visualState(
+        tps: vector.1,
+        activeSessions: vector.2,
+        cpuPercent: vector.3
+      )
+      #expect(visual.modelVersion == 1)
+      #expect(visual.state == vector.4)
+      #expect(abs(visual.score - vector.5) < 1e-12)
+      #expect(visual.clusterCount == vector.6)
+    }
   }
 
   @Test

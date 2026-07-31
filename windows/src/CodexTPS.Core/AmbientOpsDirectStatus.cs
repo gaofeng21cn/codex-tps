@@ -1,6 +1,7 @@
 namespace CodexTPS.Core;
 
 public sealed record AmbientOpsLoadVisualState(
+    int ModelVersion,
     string State,
     string Label,
     double Score,
@@ -17,6 +18,8 @@ public sealed record AmbientOpsLoadVisualState(
 
 public static class AmbientOpsLoadModel
 {
+    public const int ModelVersion = 1;
+
     public static AmbientOpsLoadVisualState VisualState(
         double tps,
         double activeSessions,
@@ -24,7 +27,7 @@ public static class AmbientOpsLoadModel
     {
         var safeTps = Math.Max(0, tps);
         var sessions = Math.Max(0, activeSessions);
-        var cpu = cpuPercent is { } value ? Math.Clamp(value, 0, 100) : null;
+        double? cpu = cpuPercent is { } value ? Math.Clamp(value, 0, 100) : null;
         var tpsIntensity = Math.Clamp(Math.Sqrt(safeTps / 60_000), 0, 1);
         var sessionIntensity = Math.Min(1, sessions / 12);
         var cpuIntensity = cpu is { } cpuValue
@@ -72,6 +75,7 @@ public static class AmbientOpsLoadModel
                     : (Id: "quiet", Label: "QUIET");
 
         return new AmbientOpsLoadVisualState(
+            ModelVersion,
             state.Id,
             state.Label,
             normalizedScore,

@@ -141,6 +141,7 @@ public struct AmbientOpsDirectStatus: Codable, Equatable, Sendable {
 }
 
 public struct AmbientOpsLoadVisualState: Codable, Equatable, Sendable {
+  public let modelVersion: Int
   public let state: String
   public let label: String
   public let score: Double
@@ -157,6 +158,8 @@ public struct AmbientOpsLoadVisualState: Codable, Equatable, Sendable {
 }
 
 public enum AmbientOpsLoadModel {
+  public static let modelVersion = 1
+
   public static func visualState(
     tps: Double,
     activeSessions: Double,
@@ -215,6 +218,7 @@ public enum AmbientOpsLoadModel {
     }
 
     return AmbientOpsLoadVisualState(
+      modelVersion: modelVersion,
       state: state.id,
       label: state.label,
       score: normalizedScore,
