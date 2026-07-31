@@ -344,11 +344,12 @@ internal sealed class TaskbarReadoutForm : Form
 internal static class TaskbarReadoutAppearance
 {
     internal const byte TransparentHitTestAlpha = 1;
-    private const string Indicator = "∿";
-    private const float HorizontalFontLogicalPixels = 16f;
+    private const float HorizontalFontLogicalPixels = 15f;
     private const float VerticalFontLogicalPixels = 11f;
 
     public static FontStyle TextFontStyle => FontStyle.Regular;
+
+    public static string TextFontFamily => "Segoe UI Semibold";
 
     public static float FontPixelSize(TaskbarEdge edge, int dpi)
     {
@@ -367,14 +368,13 @@ internal static class TaskbarReadoutAppearance
     {
         if (edge is TaskbarEdge.Left or TaskbarEdge.Right)
         {
-            var verticalRate = rateText.Replace(
+            return rateText.Replace(
                 " ",
                 Environment.NewLine,
                 StringComparison.Ordinal);
-            return $"{Indicator}{Environment.NewLine}{verticalRate}";
         }
 
-        return $"{Indicator} {rateText}";
+        return rateText;
     }
 
     public static Bitmap Render(
@@ -398,7 +398,7 @@ internal static class TaskbarReadoutAppearance
         var displayText = DisplayText(rateText, edge);
         using var textBrush = new SolidBrush(textColor);
         using var font = new Font(
-            "Segoe UI Variable Text",
+            TextFontFamily,
             FontPixelSize(edge, dpi),
             TextFontStyle,
             GraphicsUnit.Pixel);
