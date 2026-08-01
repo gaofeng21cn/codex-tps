@@ -50,6 +50,7 @@ struct AmbientOpsDirectStatusTests {
     )
 
     #expect(status.provider.kind == "codex-tps")
+    #expect(status.productName == OPLFleetAgentProtocol.productName)
     #expect(status.provider.scope == "machine")
     #expect(status.capabilities.network == true)
     #expect(status.network.status == "unavailable")

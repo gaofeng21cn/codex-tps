@@ -34,7 +34,7 @@ struct MonitorPanel: View {
         .accessibilityHidden(true)
 
       VStack(alignment: .leading, spacing: 4) {
-        Text("Codex TPS")
+        Text(OPLFleetAgentProtocol.productName)
           .font(.headline)
 
         HStack(spacing: 6) {
@@ -173,7 +173,7 @@ struct MonitorPanel: View {
           Image(systemName: "power")
         }
         .buttonStyle(.borderless)
-        .help("退出 Codex TPS")
+        .help("退出 OPL Fleet Agent")
       }
 
       if let settingsError = store.settingsError {

@@ -14,6 +14,11 @@
 - [x] The menu bar follows the persisted panel window without extra label text.
 - [x] Automatic release checks and a user-confirmed update path are implemented.
 - [x] `v0.2.0` is published and verified through a real remote update install.
+- [ ] OPL Fleet Agent compatibility envelope is shipped without changing bundle,
+  repository, discovery, or upgrade identities.
+- [ ] Agent authority remains local observation/doctor/constraints/receipts only;
+  OPL Flow and the private Fleet Controller retain registry, policy, admission,
+  lease, and dispatch authority.
 
 ## Verification record
 

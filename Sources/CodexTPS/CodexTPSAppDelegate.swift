@@ -1,4 +1,5 @@
 import AppKit
+import CodexTPSCore
 import SwiftUI
 
 @MainActor
@@ -27,7 +28,7 @@ final class CodexTPSAppDelegate: NSObject, NSApplicationDelegate {
       backing: .buffered,
       defer: false
     )
-    window.title = "Codex TPS"
+    window.title = OPLFleetAgentProtocol.productName
     window.contentView = NSHostingView(rootView: panel)
     window.center()
     window.makeKeyAndOrderFront(nil)

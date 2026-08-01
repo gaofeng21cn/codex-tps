@@ -48,7 +48,7 @@ rolling aggregate snapshot
         -> mDNS discovery
         -> one-time visible pairing approval
         -> per-device P-256 signed POST
-        -> user-configured Ambient Ops server
+        -> user-configured OPL Fleet Telemetry Gateway
 ```
 
 The menu bar app discovers compatible servers and uses a private P-256 device
@@ -63,6 +63,19 @@ Session identifiers, paths, prompts, responses, and tool content never cross
 the process boundary. Collection failures retain the last successful aggregate
 values and mark the snapshot as an error; transport failures retry without
 affecting local collection.
+
+## OPL Fleet Agent boundary
+
+Codex TPS is presented to users as `OPL Fleet Agent · Codex TPS` while preserving
+the existing bundle ID, repository URL, discovery service, and upgrade chain.
+The `oplFleet` extension is a versioned, aggregate-only envelope. It describes
+the local Agent's observation, doctor, execution-constraint, and sanitized-receipt
+capabilities across Local, Direct, and Fleet modes. The Agent can constrain and
+report its own host execution, but it never owns registry, policy, admission,
+lease, or dispatch authority. OPL Flow, the private Instance, and the Fleet
+Controller remain authoritative. Ambient Ops is presented as `OPL Fleet Cockpit`
+and its Gateway only stores, aggregates, and projects telemetry; it does not
+schedule or dispatch work.
 
 ## Release trust flow
 

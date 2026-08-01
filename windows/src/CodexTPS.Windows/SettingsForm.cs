@@ -38,7 +38,7 @@ internal sealed class SettingsForm : RoundedPopupForm
 
     public SettingsForm(AppSettings settings, AmbientOpsConnectionStatus connection)
     {
-        Text = "Codex TPS 设置";
+        Text = "OPL Fleet Agent · Codex TPS 设置";
         BackColor = Background;
         ForeColor = Primary;
         Font = new Font("Segoe UI Variable Text", 9f);
@@ -110,7 +110,7 @@ internal sealed class SettingsForm : RoundedPopupForm
         AddField("Codex home", homePanel);
         AddSeparator();
 
-        AddSection("Ambient Ops");
+        AddSection("OPL Fleet Agent / Ambient Ops Gateway");
         AddToggle("发送聚合指标", ambientEnabled);
         AddToggle("自动发现", autoDiscover);
         AddConnection(connection);
@@ -202,7 +202,7 @@ internal sealed class SettingsForm : RoundedPopupForm
         header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
         var title = new Label
         {
-            Text = "Codex TPS 设置",
+            Text = "OPL Fleet Agent · Codex TPS 设置",
             AutoSize = true,
             Anchor = AnchorStyles.Left,
             ForeColor = Primary,

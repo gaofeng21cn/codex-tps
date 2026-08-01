@@ -15,8 +15,8 @@ internal static class Program
         if (!created)
         {
             MessageBox.Show(
-                "Codex TPS is already running.",
-                "Codex TPS",
+                "OPL Fleet Agent · Codex TPS is already running.",
+                "OPL Fleet Agent · Codex TPS",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
             return;

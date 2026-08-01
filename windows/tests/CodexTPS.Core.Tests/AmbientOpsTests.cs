@@ -65,13 +65,20 @@ public sealed class AmbientOpsTests
             new HashSet<string>
             {
                 "schemaVersion", "machineName", "platform", "generatedAt", "status",
-                "oneMinute", "fiveMinutes", "activeSessions",
+                "oneMinute", "fiveMinutes", "activeSessions", "oplFleet",
             },
             keys);
         Assert.DoesNotContain("prompt", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("response", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("sessionId", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("sessionsRoot", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(3, payload.SchemaVersion);
+        Assert.Equal("OPL Fleet Agent · Codex TPS", payload.OplFleet!.Product);
+        Assert.Equal("windows-pc", payload.OplFleet.StableNodeId);
+        Assert.Equal("node_agent", payload.OplFleet.Authority);
+        var envelope = document.RootElement.GetProperty("oplFleet");
+        Assert.Equal("windows-pc", envelope.GetProperty("stableNodeID").GetString());
+        Assert.False(envelope.TryGetProperty("stableNodeId", out _));
     }
 
     [Fact]

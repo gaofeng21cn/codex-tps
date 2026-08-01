@@ -55,8 +55,8 @@ internal sealed class DashboardForm : RoundedPopupForm
     public DashboardForm(string sessionsRoot)
     {
         this.sessionsRoot = sessionsRoot;
-        Text = "Codex TPS";
-        AccessibleName = "Codex TPS";
+        Text = "OPL Fleet Agent · Codex TPS";
+        AccessibleName = "OPL Fleet Agent · Codex TPS";
         BackColor = Background;
         ForeColor = Primary;
         Font = new Font("Segoe UI Variable Text", 9f);
@@ -308,7 +308,7 @@ internal sealed class DashboardForm : RoundedPopupForm
             12.5f,
             Primary,
             "Segoe UI Semibold",
-            text: "Codex TPS");
+            text: "OPL Fleet Agent · Codex TPS");
         title.Margin = Padding.Empty;
         titles.Controls.Add(title, 0, 0);
         var status = new FlowLayoutPanel
@@ -525,7 +525,7 @@ internal sealed class DashboardForm : RoundedPopupForm
         startup.Controls.Add(startupToggle);
         footer.Controls.Add(startup, 1, 0);
 
-        var exitButton = HeaderButton("\uE7E8", "退出 Codex TPS");
+        var exitButton = HeaderButton("\uE7E8", "退出 OPL Fleet Agent · Codex TPS");
         exitButton.Anchor = AnchorStyles.Right;
         exitButton.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
         footer.Controls.Add(exitButton, 2, 0);

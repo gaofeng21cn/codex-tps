@@ -204,6 +204,43 @@ public sealed class AmbientOpsPetTracker
     }
 }
 
+public static class OplFleetAgentProtocol
+{
+    public const string Schema = "opl_fleet_agent_telemetry.v1";
+    public const string ProductName = "OPL Fleet Agent · Codex TPS";
+    public const string AgentVersion = "0.2.27";
+    public static readonly string[] Modes = ["local", "direct", "fleet"];
+    public static readonly string[] Capabilities =
+    [
+        "node_local_observation",
+        "node_local_doctor",
+        "node_local_execution_constraints",
+        "sanitized_execution_receipts",
+        "local_codex_telemetry",
+        "host_dashboard",
+    ];
+}
+
+public sealed record OplFleetAgentEnvelope(
+    string Schema,
+    string Product,
+    [property: JsonPropertyName("stableNodeID")]
+    string StableNodeId,
+    string AgentVersion,
+    IReadOnlyList<string> Modes,
+    IReadOnlyList<string> Capabilities,
+    string Authority)
+{
+    public static OplFleetAgentEnvelope For(AmbientOpsMachineIdentity identity) => new(
+        OplFleetAgentProtocol.Schema,
+        OplFleetAgentProtocol.ProductName,
+        identity.MachineId,
+        OplFleetAgentProtocol.AgentVersion,
+        OplFleetAgentProtocol.Modes,
+        OplFleetAgentProtocol.Capabilities,
+        "node_agent");
+}
+
 public sealed record AmbientOpsAgentSnapshot(
     int SchemaVersion,
     string MachineName,
@@ -216,7 +253,8 @@ public sealed record AmbientOpsAgentSnapshot(
     int ActiveSessions,
     double? CpuPercent,
     HostNetworkTelemetry? Network,
-    AmbientOpsPetSnapshot? Pet)
+    AmbientOpsPetSnapshot? Pet,
+    OplFleetAgentEnvelope? OplFleet)
 {
     public static AmbientOpsAgentSnapshot FromUsage(
         UsageSnapshot usage,
@@ -228,7 +266,7 @@ public sealed record AmbientOpsAgentSnapshot(
     {
         var live = usage.Status == CollectionStatus.Ready;
         return new AmbientOpsAgentSnapshot(
-            2,
+            3,
             identity.MachineName,
             identity.Platform,
             usage.GeneratedAt,
@@ -243,7 +281,8 @@ public sealed record AmbientOpsAgentSnapshot(
             live ? usage.ActiveSessions : fallback?.ActiveSessions ?? 0,
             live ? cpuPercent : fallback?.CpuPercent,
             live ? network : fallback?.Network,
-            pet);
+            pet,
+            OplFleetAgentEnvelope.For(identity));
     }
 
     private static string ErrorMessage(CollectionStatus status) => status switch

@@ -6,10 +6,10 @@
   <img src="Resources/AppIcon.png" width="128" alt="Codex TPS app icon">
 </p>
 
-<h1 align="center">Codex TPS</h1>
+<h1 align="center">OPL Fleet Agent · Codex TPS</h1>
 
 <p align="center"><strong>A quiet menu-bar and system-tray view of local Codex token throughput</strong></p>
-<p align="center">macOS menu bar · Windows system tray · Ambient Ops integration</p>
+<p align="center">macOS menu bar · Windows system tray · Ambient Ops Gateway integration</p>
 
 <p align="center">
   <a href="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml"><img src="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -43,7 +43,7 @@
 
 ### What it is
 
-Codex TPS is a local-first desktop utility. It incrementally reads token-usage events
+OPL Fleet Agent · Codex TPS is a local-first desktop utility. It incrementally reads token-usage events
 already written under the Codex `sessions` directory and turns them into a compact
 macOS menu bar or Windows system-tray readout.
 
@@ -148,7 +148,7 @@ endpoint so Ambient Ops can display this Mac without a separate Gateway. The Dir
 provider exposes only aggregate TPS, active sessions, host CPU and network throughput,
 and the selected pet asset. Windows does not publish the Direct provider yet.
 
-For fleet mode, Codex TPS discovers `_ambient-ops._tcp.local` automatically. On first
+For fleet mode, the Agent discovers `_ambient-ops._tcp.local` automatically. On first
 connection, the desktop app creates a local per-device key and opens the approval page.
 After the user verifies the six-digit code, signed pushes begin without copying a
 shared token.
@@ -162,7 +162,15 @@ Ambient Ops stores only the corresponding public key. The payload is limited to:
 - active-session count; and
 - optional pet definition and activity state.
 
-Session identifiers, local paths, prompts, responses, and tool content are never sent.
+The optional `oplFleet` extension uses schema `opl_fleet_agent_telemetry.v1` and
+advertises Local, Direct, and Fleet modes plus node-local observation, doctor,
+execution-constraint, and sanitized-receipt capabilities. The Agent does not own
+registry, policy, admission, lease, or dispatch; OPL Flow, the private Fleet
+Controller, and the approved Instance remain authoritative. The Gateway only
+aggregates and projects telemetry and is never a second scheduler.
+
+Session identifiers, local paths, interface names, addresses, prompts, responses,
+credentials, raw logs, and tool content are never sent.
 The integration is opt-in and can be disabled, rediscovered, or pointed at a manual
 HTTP(S) endpoint from settings.
 

@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>zh_CN</string>
     <key>CFBundleDisplayName</key>
-    <string>Codex TPS</string>
+    <string>OPL Fleet Agent · Codex TPS</string>
     <key>CFBundleExecutable</key>
     <string>CodexTPS</string>
     <key>CFBundleIconFile</key>
@@ -15,11 +15,11 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Codex TPS</string>
+    <string>OPL Fleet Agent · Codex TPS</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.2.26</string>
+    <string>0.2.27</string>
     <key>CFBundleVersion</key>
     <string>24</string>
     <key>LSMinimumSystemVersion</key>
@@ -31,7 +31,7 @@
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>Codex TPS shares read-only aggregate metrics with Ambient Ops and can send them to your Gateway on the local network.</string>
+    <string>OPL Fleet Agent shares read-only aggregate metrics with your self-hosted OPL Fleet Cockpit on the local network.</string>
     <key>NSBonjourServices</key>
     <array>
         <string>_ambient-ops._tcp</string>

@@ -1,6 +1,6 @@
 # Codex TPS for Windows
 
-Codex TPS for Windows is a native .NET 8 WinForms tray application. It reads
+OPL Fleet Agent · Codex TPS for Windows is a native .NET 8 WinForms tray application. It reads
 the token accounting events already written under the current Windows user's
 Codex home and can send aggregate metrics to Ambient Ops on the local network.
 
@@ -13,7 +13,7 @@ Codex home and can send aggregate metrics to Ambient Ops on the local network.
 - Five-second local refresh; Ambient Ops pushes are limited to once per ten seconds
 - `_ambient-ops._tcp.local.` DNS-SD discovery with preferred-instance and fallback behavior
 - Manual Ambient Ops HTTP(S) URL override
-- Optional Ledger Owl state using the same Ambient Ops v2 payload as macOS
+- Optional Ledger Owl state using the same Ambient Ops v3 payload as macOS
 - Optional per-user startup through `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`
 - GitHub release checks after launch and every six hours, with user-confirmed in-app updates
 - SHA-256 verification, exact-PID handoff, installed-version readback, relaunch, and failure recovery
@@ -40,6 +40,12 @@ records are not decoded or retained. Ambient Ops receives only:
 - aggregate one-minute and five-minute token counters;
 - active-session count;
 - optional pet identity and activity state.
+
+The `oplFleet` extension advertises schema `opl_fleet_agent_telemetry.v1`, Local/
+Direct/Fleet modes, and node-local observation, doctor, execution-constraint, and
+sanitized-receipt capabilities. It is descriptive only: registry, policy, admission,
+lease, and dispatch remain owned by OPL Flow, the private Instance, and the Fleet
+Controller. Gateway aggregation is read-only and does not become a scheduler.
 
 Session IDs, file paths, prompts, responses and tool content are never included
 in the network payload. The app contains no analytics or account login.
@@ -106,7 +112,7 @@ windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
 To build the standard installer, also install Inno Setup 6 and run:
 
 ```powershell
-pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.26
+pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.27
 ```
 
 This additionally creates:

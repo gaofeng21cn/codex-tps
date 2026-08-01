@@ -21,7 +21,7 @@ final class AmbientOpsPushTests: XCTestCase {
       Set(object.keys),
       [
         "schemaVersion", "machineName", "platform", "generatedAt", "status",
-        "oneMinute", "fiveMinutes", "activeSessions",
+        "oneMinute", "fiveMinutes", "activeSessions", "oplFleet",
       ])
     XCTAssertEqual(payload.status, "live")
     XCTAssertEqual(payload.oneMinute.tps, 10)
@@ -31,6 +31,11 @@ final class AmbientOpsPushTests: XCTestCase {
     XCTAssertEqual(payload.oneMinute.reasoningOutputTokens, 60)
     XCTAssertEqual(payload.oneMinute.requests, 2)
     XCTAssertNil(payload.cpuPercent)
+    XCTAssertEqual(payload.schemaVersion, 3)
+    XCTAssertEqual(payload.oplFleet?.schema, OPLFleetAgentProtocol.schema)
+    XCTAssertEqual(payload.oplFleet?.product, OPLFleetAgentProtocol.productName)
+    XCTAssertEqual(payload.oplFleet?.stableNodeID, "primary-mac")
+    XCTAssertFalse(payload.oplFleet?.capabilities.contains("prompt") == true)
   }
 
   func testIncludesOptionalHostCPUOnlyWhenSampled() throws {
@@ -148,7 +153,7 @@ final class AmbientOpsPushTests: XCTestCase {
     let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
     let pet = try XCTUnwrap(object["pet"] as? [String: Any])
 
-    XCTAssertEqual(payload.schemaVersion, 2)
+    XCTAssertEqual(payload.schemaVersion, 3)
     XCTAssertEqual(pet["id"] as? String, "ledger-owl")
     XCTAssertEqual(pet["state"] as? String, "running")
     XCTAssertNil(pet["prompt"])

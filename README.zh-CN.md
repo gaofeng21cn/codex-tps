@@ -6,10 +6,10 @@
   <img src="Resources/AppIcon.png" width="128" alt="Codex TPS 应用图标">
 </p>
 
-<h1 align="center">Codex TPS</h1>
+<h1 align="center">OPL Fleet Agent · Codex TPS</h1>
 
 <p align="center"><strong>在菜单栏或系统托盘中，安静地查看本机 Codex Token 吞吐</strong></p>
-<p align="center">macOS 菜单栏 · Windows 系统托盘 · Ambient Ops 局域网协同</p>
+<p align="center">macOS 菜单栏 · Windows 系统托盘 · Ambient Ops Gateway 协同</p>
 
 <p align="center">
   <a href="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml"><img src="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml/badge.svg" alt="持续集成"></a>
@@ -43,7 +43,7 @@
 
 ### 这是什么
 
-Codex TPS 是一个本机优先的桌面小工具。它增量读取 Codex 已经写入
+OPL Fleet Agent · Codex TPS 是一个本机优先的桌面小工具。它增量读取 Codex 已经写入
 `sessions` 目录的 Token 用量事件，把最近一段时间的吞吐显示在 macOS 菜单栏
 或 Windows 系统托盘中。
 
@@ -143,7 +143,7 @@ macOS 版 Codex TPS 会发布 `_codex-tps._tcp.local` 和只读本机状态端�
 Ops 无需单独部署 Gateway 即可显示这台 Mac。Direct 只提供汇总 TPS、活跃会话数、
 主机 CPU、网络吞吐以及所选 Pet 资源；Windows 本版尚未发布 Direct 服务。
 
-舰队模式下，Codex TPS 可通过 `_ambient-ops._tcp.local` 自动发现 Gateway。首次连接
+舰队模式下，Agent 可通过 `_ambient-ops._tcp.local` 自动发现 Gateway。首次连接
 时，桌面应用会在本机生成独立设备密钥并打开批准页；用户核对六位配对码后，应用
 开始发送签名快照，不需要复制共享令牌。
 
@@ -156,8 +156,13 @@ Ops 仅保存对应公钥。上报内容只包括：
 - 活跃会话数
 - 可选宠物定义与活动状态
 
-会话标识、本机路径、提示词、回复正文和工具内容不会发送。该集成默认关闭，可在
-应用设置中随时停用、重新发现或改用手动 HTTP(S) 地址。
+可选的 `oplFleet` 扩展使用 `opl_fleet_agent_telemetry.v1` schema，声明
+`local`、`direct`、`fleet` 三种模式，以及本机观测、doctor、执行约束和脱敏回执
+能力。Agent 不拥有 registry、policy、admission、lease 或 dispatch 权威；这些仍由
+OPL Flow、私人 OPL Fleet Controller 和批准的 Instance 管理。Gateway 只做遥测接收、
+聚合和只读投影，不形成第二套调度权威。上报不会包含接口名、地址、凭据、原始日志、
+会话标识、路径、提示词、回复正文或工具内容。该集成默认关闭，可在应用设置中随时
+停用、重新发现或改用手动 HTTP(S) 地址。
 
 ### 隐私边界
 

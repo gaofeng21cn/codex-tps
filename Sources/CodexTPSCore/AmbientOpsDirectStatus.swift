@@ -41,6 +41,7 @@ public actor AmbientOpsMachineObservationStore {
 
 public struct AmbientOpsDirectStatus: Codable, Equatable, Sendable {
   public let schemaVersion: Int
+  public let productName: String
   public let serverVersion: String
   public let instanceId: String
   public let generatedAt: Date
@@ -297,6 +298,7 @@ public enum AmbientOpsDirectStatusBuilder {
 
     return AmbientOpsDirectStatus(
       schemaVersion: 1,
+      productName: OPLFleetAgentProtocol.productName,
       serverVersion: serverVersion,
       instanceId: providerID,
       generatedAt: now,

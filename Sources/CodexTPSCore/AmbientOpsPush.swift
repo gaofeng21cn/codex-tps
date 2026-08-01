@@ -137,6 +137,7 @@ public struct AmbientOpsAgentSnapshot: Codable, Equatable, Sendable {
   public let cpuPercent: Double?
   public let network: HostNetworkTelemetry?
   public let pet: AmbientOpsPetSnapshot?
+  public let oplFleet: OPLFleetAgentEnvelope?
 
   public init(
     usage: UsageSnapshot,
@@ -146,7 +147,7 @@ public struct AmbientOpsAgentSnapshot: Codable, Equatable, Sendable {
     network: HostNetworkTelemetry? = nil,
     pet: AmbientOpsPetSnapshot? = nil
   ) {
-    schemaVersion = 2
+    schemaVersion = 3
     machineName = identity.machineName
     platform = identity.platform
     generatedAt = usage.generatedAt
@@ -154,6 +155,7 @@ public struct AmbientOpsAgentSnapshot: Codable, Equatable, Sendable {
     self.cpuPercent = usage.status == .ready ? cpuPercent : fallback?.cpuPercent
     self.network = usage.status == .ready ? network : fallback?.network
     self.pet = pet
+    oplFleet = OPLFleetAgentEnvelope(stableNodeID: identity.machineID)
 
     if usage.status == .ready {
       status = "live"
