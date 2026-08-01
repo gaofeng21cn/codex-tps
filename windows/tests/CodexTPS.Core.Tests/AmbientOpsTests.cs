@@ -75,6 +75,26 @@ public sealed class AmbientOpsTests
     }
 
     [Fact]
+    public void SerializesOnlyAggregateHostNetworkTelemetryWhenSampled()
+    {
+        var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");
+        var sampledAt = new DateTimeOffset(2026, 8, 1, 8, 0, 0, TimeSpan.Zero);
+        var payload = AmbientOpsAgentSnapshot.FromUsage(
+            Usage(),
+            identity,
+            network: new HostNetworkTelemetry(123.5, 12.25, sampledAt));
+        var json = JsonSerializer.Serialize(payload, AmbientOpsPushClient.SerializerOptions);
+        using var document = JsonDocument.Parse(json);
+        var network = document.RootElement.GetProperty("network");
+
+        Assert.Equal(123.5, network.GetProperty("downloadMbps").GetDouble());
+        Assert.Equal(12.25, network.GetProperty("uploadMbps").GetDouble());
+        Assert.Equal(sampledAt, network.GetProperty("sampledAt").GetDateTimeOffset());
+        Assert.False(network.TryGetProperty("interface", out _));
+        Assert.False(network.TryGetProperty("address", out _));
+    }
+
+    [Fact]
     public void IncludesHostCpuInAggregatePayload()
     {
         var identity = new AmbientOpsMachineIdentity("windows-pc", "Windows PC", "Windows");

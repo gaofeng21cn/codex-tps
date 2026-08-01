@@ -132,11 +132,13 @@ final class MonitorStore: ObservableObject {
     let pet = petAsset.map {
       ambientPetTracker.snapshot(definition: $0.definition, usage: nextSnapshot)
     }
+    let networkTelemetry = await observationStore.currentNetwork()
     let payload = AmbientOpsAgentSnapshot(
       usage: nextSnapshot,
       identity: identity,
       fallback: lastObservedSnapshot,
       cpuPercent: hostTelemetry.sampleCPUPercent(),
+      network: networkTelemetry,
       pet: pet
     )
     let observation = AmbientOpsMachineObservation(

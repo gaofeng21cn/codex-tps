@@ -67,6 +67,13 @@ final class AmbientOpsDiscoveryTests: XCTestCase {
     XCTAssertEqual(selector.select(from: [preferred, other]), other)
   }
 
+  func testFallsBackWhenSavedPreferredInstanceIsNoLongerAdvertised() {
+    let available = service(id: "available", port: 8792)
+    let selector = AmbientOpsServiceSelector(preferredInstanceID: "retired")
+
+    XCTAssertEqual(selector.select(from: [available]), available)
+  }
+
   private func service(id: String, port: Int) -> AmbientOpsService {
     AmbientOpsService(
       instanceID: id,

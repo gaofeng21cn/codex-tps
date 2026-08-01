@@ -215,6 +215,7 @@ public sealed record AmbientOpsAgentSnapshot(
     AmbientOpsWindowSnapshot FiveMinutes,
     int ActiveSessions,
     double? CpuPercent,
+    HostNetworkTelemetry? Network,
     AmbientOpsPetSnapshot? Pet)
 {
     public static AmbientOpsAgentSnapshot FromUsage(
@@ -222,6 +223,7 @@ public sealed record AmbientOpsAgentSnapshot(
         AmbientOpsMachineIdentity identity,
         AmbientOpsAgentSnapshot? fallback = null,
         double? cpuPercent = null,
+        HostNetworkTelemetry? network = null,
         AmbientOpsPetSnapshot? pet = null)
     {
         var live = usage.Status == CollectionStatus.Ready;
@@ -240,6 +242,7 @@ public sealed record AmbientOpsAgentSnapshot(
                 : fallback.FiveMinutes,
             live ? usage.ActiveSessions : fallback?.ActiveSessions ?? 0,
             live ? cpuPercent : fallback?.CpuPercent,
+            live ? network : fallback?.Network,
             pet);
     }
 

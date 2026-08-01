@@ -13,6 +13,12 @@ public sealed class AmbientOpsCoordinatorTests
         SupportsPairing: false);
 
     [Fact]
+    public void SamplesHostNetworkAtFourHertzWithoutChangingPushCadence()
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(250), AmbientOpsCoordinator.HostNetworkSampleInterval);
+    }
+
+    [Fact]
     public void RefreshesLegacyCapabilityAfterCacheIntervalWithoutToken()
     {
         var discoveredAt = new DateTimeOffset(2026, 7, 26, 9, 0, 0, TimeSpan.Zero);

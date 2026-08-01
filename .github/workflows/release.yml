@@ -217,11 +217,11 @@ jobs:
           cat >release-notes.md <<'EOF'
           ## macOS
 
-          Codex TPS now advertises a read-only `_codex-tps._tcp` Direct provider. Ambient Ops can discover this Mac and display its aggregate TPS, active sessions, host CPU, network throughput, and selected Pet without deploying a Gateway. Conversation content and session identifiers are never served. `Codex-TPS.dmg` remains Developer ID signed, notarized, stapled, and checksum verified.
+          Codex TPS now samples aggregate host network throughput locally at 4 Hz and includes the latest download/upload Mbps in its rate-limited Ambient Ops Gateway push. The read-only `_codex-tps._tcp` Direct provider exposes the same aggregate network data without deploying a Gateway. Conversation content, session identifiers, interface names, and addresses are never served. `Codex-TPS.dmg` remains Developer ID signed, notarized, stapled, and checksum verified.
 
           ## Windows
 
-          The taskbar readout is tighter and uses a clearer semibold system font. Gateway discovery and signed aggregate pushes remain available. The Direct LAN server is not enabled on Windows in this release. The installer is still not Authenticode-signed and may show an unknown-publisher warning; verify the published SHA-256 before running it.
+          Gateway discovery and signed aggregate pushes now include the latest host download/upload Mbps from a 4 Hz local sampler. The Direct LAN server is not enabled on Windows in this release. The installer is still not Authenticode-signed and may show an unknown-publisher warning; verify the published SHA-256 before running it.
           EOF
           gh release create "$GITHUB_REF_NAME" \
             release-assets/Codex-TPS.dmg \

@@ -138,8 +138,10 @@ public final class AmbientOpsDiscovery: NSObject, NetServiceBrowserDelegate, Net
 
   private let browser = NetServiceBrowser()
   private var services: [NetService] = []
+  private var resolvedServices: [URL: AmbientOpsService] = [:]
+  private var selector = AmbientOpsServiceSelector(preferredInstanceID: nil)
+  private var selectedService: AmbientOpsService?
   public private(set) var isRunning = false
-  private var preferredInstanceID: String?
 
   public override init() {
     super.init()
@@ -147,8 +149,10 @@ public final class AmbientOpsDiscovery: NSObject, NetServiceBrowserDelegate, Net
   }
 
   public func start(preferredInstanceID: String?) {
-    self.preferredInstanceID = preferredInstanceID?.lowercased()
     guard !isRunning else { return }
+    selector = AmbientOpsServiceSelector(preferredInstanceID: preferredInstanceID)
+    resolvedServices.removeAll()
+    selectedService = nil
     isRunning = true
     onStatusChanged?("正在查找局域网服务")
     browser.searchForServices(
@@ -164,6 +168,8 @@ public final class AmbientOpsDiscovery: NSObject, NetServiceBrowserDelegate, Net
       service.stop()
     }
     services.removeAll()
+    resolvedServices.removeAll()
+    selectedService = nil
     isRunning = false
   }
 
@@ -231,10 +237,13 @@ public final class AmbientOpsDiscovery: NSObject, NetServiceBrowserDelegate, Net
         txtRecordData: service.txtRecordData()
       )
     else { return }
-    if let preferredInstanceID, preferredInstanceID != candidate.instanceID {
-      return
-    }
-    onServiceResolved?(candidate)
+    resolvedServices[candidate.endpoint] = candidate
+    guard
+      let selected = selector.select(from: Array(resolvedServices.values)),
+      selected != selectedService
+    else { return }
+    selectedService = selected
+    onServiceResolved?(selected)
   }
 }
 

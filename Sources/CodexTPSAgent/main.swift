@@ -20,6 +20,19 @@ struct CodexTPSAgentCommand {
       codexHome: configuration.codexHome,
       preferredPetID: configuration.preferredPetID
     )
+    let networkTelemetryStore = AmbientOpsMachineObservationStore()
+    let networkTelemetryTask = Task.detached(priority: .utility) {
+      var sampler = HostNetworkTelemetrySampler()
+      _ = sampler.sample()
+      while !Task.isCancelled {
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled else { return }
+        if let telemetry = sampler.sample() {
+          await networkTelemetryStore.updateNetwork(telemetry)
+        }
+      }
+    }
+    defer { networkTelemetryTask.cancel() }
     var lastSuccessfulSnapshot: AmbientOpsAgentSnapshot?
     var hostTelemetry = HostTelemetrySampler()
     var petTracker = AmbientOpsPetTracker()
@@ -36,11 +49,13 @@ struct CodexTPSAgentCommand {
       let pet = petAsset.map {
         petTracker.snapshot(definition: $0.definition, usage: usage)
       }
+      let networkTelemetry = await networkTelemetryStore.currentNetwork()
       let snapshot = AmbientOpsAgentSnapshot(
         usage: usage,
         identity: configuration.identity,
         fallback: lastSuccessfulSnapshot,
         cpuPercent: hostTelemetry.sampleCPUPercent(),
+        network: networkTelemetry,
         pet: pet
       )
       if usage.status == .ready {

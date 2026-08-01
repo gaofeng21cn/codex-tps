@@ -122,6 +122,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         updateTimer.Dispose();
         updateManager.StateChanged -= UpdateManagerOnStateChanged;
         updateManager.Dispose();
+        ambientOps.Dispose();
         cancellation.Dispose();
         base.ExitThreadCore();
     }

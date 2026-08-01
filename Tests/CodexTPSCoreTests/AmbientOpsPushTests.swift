@@ -49,6 +49,33 @@ final class AmbientOpsPushTests: XCTestCase {
     XCTAssertEqual(object["cpuPercent"] as? Double, 42.5)
   }
 
+  func testIncludesOnlyAggregateHostNetworkTelemetryWhenSampled() throws {
+    let identity = try AmbientOpsMachineIdentity(
+      machineID: "primary-mac",
+      machineName: "Primary Mac",
+      platform: "macOS"
+    )
+    let sampledAt = Date(timeIntervalSince1970: 1_000)
+    let payload = AmbientOpsAgentSnapshot(
+      usage: usageSnapshot(status: .ready),
+      identity: identity,
+      network: HostNetworkTelemetry(
+        downloadMbps: 123.5,
+        uploadMbps: 12.25,
+        sampledAt: sampledAt
+      )
+    )
+    let data = try JSONEncoder().encode(payload)
+    let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    let network = try XCTUnwrap(object["network"] as? [String: Any])
+
+    XCTAssertEqual(network["downloadMbps"] as? Double, 123.5)
+    XCTAssertEqual(network["uploadMbps"] as? Double, 12.25)
+    XCTAssertNotNil(network["sampledAt"])
+    XCTAssertNil(network["interface"])
+    XCTAssertNil(network["address"])
+  }
+
   func testCollectionFailureRetainsLastSuccessfulValues() throws {
     let identity = try AmbientOpsMachineIdentity(
       machineID: "primary-mac",
@@ -65,6 +92,7 @@ final class AmbientOpsPushTests: XCTestCase {
     XCTAssertEqual(failed.oneMinute, live.oneMinute)
     XCTAssertEqual(failed.fiveMinutes, live.fiveMinutes)
     XCTAssertEqual(failed.activeSessions, live.activeSessions)
+    XCTAssertEqual(failed.network, live.network)
   }
 
   func testTracksHostPetIdentityAndActivityState() throws {

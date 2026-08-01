@@ -21,16 +21,21 @@ internal sealed record AmbientOpsConnectionStatus(
     Uri? Endpoint = null,
     Uri? ApprovalUri = null);
 
-internal sealed class AmbientOpsCoordinator
+internal sealed class AmbientOpsCoordinator : IDisposable
 {
     internal static readonly TimeSpan PairingCapabilityRefreshInterval =
         TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan HostNetworkSampleInterval =
+        TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan PushInterval = TimeSpan.FromSeconds(10);
     private readonly AmbientOpsDiscovery discovery = new();
     private readonly AmbientOpsPushClient pushClient = new();
     private readonly AmbientOpsPairingClient pairingClient = new();
     private readonly AmbientOpsPetTracker petTracker = new();
     private readonly HostCpuTelemetrySampler cpuSampler = new();
+    private readonly CancellationTokenSource networkTelemetryCancellation = new();
+    private readonly object networkTelemetryLock = new();
+    private readonly Task networkTelemetryTask;
     private IReadOnlyList<AmbientOpsService> discoveredServices = [];
     private AmbientOpsService? selectedService;
     private AmbientOpsServiceSelector? selector;
@@ -41,6 +46,13 @@ internal sealed class AmbientOpsCoordinator
     private AmbientOpsPairingSession? pairingSession;
     private Uri? pairingEndpoint;
     private string configurationKey = string.Empty;
+    private HostNetworkTelemetry? latestNetworkTelemetry;
+    private bool disposed;
+
+    public AmbientOpsCoordinator()
+    {
+        networkTelemetryTask = SampleNetworkTelemetryAsync(networkTelemetryCancellation.Token);
+    }
 
     public AmbientOpsConnectionStatus Connection { get; private set; } = new(
         AmbientOpsConnectionKind.Discovering,
@@ -135,6 +147,7 @@ internal sealed class AmbientOpsCoordinator
             identity,
             fallback: lastSuccessfulSnapshot,
             cpuPercent: cpuSampler.SampleCpuPercent(),
+            network: CurrentNetworkTelemetry(),
             pet: pet);
 
         try
@@ -251,6 +264,58 @@ internal sealed class AmbientOpsCoordinator
         !service.SupportsPairing &&
         discoveredAt is { } timestamp &&
         now - timestamp >= PairingCapabilityRefreshInterval;
+
+    public void Dispose()
+    {
+        if (disposed)
+        {
+            return;
+        }
+        disposed = true;
+        networkTelemetryCancellation.Cancel();
+        try
+        {
+            networkTelemetryTask.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected while the tray application is closing.
+        }
+        networkTelemetryCancellation.Dispose();
+    }
+
+    private async Task SampleNetworkTelemetryAsync(CancellationToken cancellationToken)
+    {
+        var sampler = new HostNetworkTelemetrySampler();
+        _ = sampler.Sample();
+        using var timer = new PeriodicTimer(HostNetworkSampleInterval);
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (sampler.Sample() is not { } telemetry)
+                {
+                    continue;
+                }
+                lock (networkTelemetryLock)
+                {
+                    latestNetworkTelemetry = telemetry;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Normal shutdown.
+        }
+    }
+
+    private HostNetworkTelemetry? CurrentNetworkTelemetry()
+    {
+        lock (networkTelemetryLock)
+        {
+            return latestNetworkTelemetry;
+        }
+    }
 
     private async Task PushAsync(
         Uri endpoint,

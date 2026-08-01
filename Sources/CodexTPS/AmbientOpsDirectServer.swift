@@ -57,7 +57,7 @@ final class AmbientOpsDirectServer: @unchecked Sendable {
         var sampler = HostNetworkTelemetrySampler()
         _ = sampler.sample()
         while !Task.isCancelled {
-          try? await Task.sleep(for: .seconds(2))
+          try? await Task.sleep(for: .milliseconds(250))
           guard !Task.isCancelled else { return }
           if let telemetry = sampler.sample() {
             await observationStore.updateNetwork(telemetry)
