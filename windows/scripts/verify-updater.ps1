@@ -36,7 +36,20 @@ $uninstaller = Join-Path $installDirectory "unins000.exe"
 
 New-Item -ItemType Directory -Force $stagingDirectory | Out-Null
 try {
-    $releaseRoot = "https://github.com/gaofeng21cn/opl-fleet-agent/releases/download/v$PreviousVersion"
+    $releaseRepository = if (
+        [string]::IsNullOrWhiteSpace($env:GITHUB_REPOSITORY)
+    ) {
+        "gaofeng21cn/opl-fleet-agent"
+    } else {
+        $env:GITHUB_REPOSITORY
+    }
+    if ($releaseRepository -notin @(
+        "gaofeng21cn/opl-fleet-agent",
+        "gaofeng21cn/codex-tps"
+    )) {
+        throw "Unsupported previous-release repository: $releaseRepository"
+    }
+    $releaseRoot = "https://github.com/$releaseRepository/releases/download/v$PreviousVersion"
     Invoke-WebRequest `
         "$releaseRoot/Codex-TPS-Windows-win-x64-Setup.exe" `
         -OutFile $previousInstaller

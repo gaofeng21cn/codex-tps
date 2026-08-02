@@ -217,7 +217,7 @@ jobs:
           cat >release-notes.md <<'EOF'
           ## macOS
 
-          OPL Fleet Agent · Codex TPS now follows the canonical `opl-fleet-agent` source and release repository. Version 0.2.28 is the repository-identity bridge: the existing Bundle ID, asset names, installer, `_codex-tps._tcp` Direct provider, and user-confirmed update behavior remain unchanged. A same-byte legacy release keeps older `codex-tps` clients on a one-step path to this bridge. `Codex-TPS.dmg` remains Developer ID signed, notarized, stapled, and checksum verified.
+          OPL Fleet Agent · Codex TPS now follows the canonical `opl-fleet-agent` source and release repository. Version 0.2.29 is the repository-identity bridge: the existing Bundle ID, asset names, installer, `_codex-tps._tcp` Direct provider, and user-confirmed update behavior remain unchanged. A same-byte legacy release keeps older `codex-tps` clients on a one-step path to this bridge. `Codex-TPS.dmg` remains Developer ID signed, notarized, stapled, and checksum verified.
 
           ## Windows
 
