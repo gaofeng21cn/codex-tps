@@ -7,7 +7,7 @@ namespace CodexTPS.WindowsApp;
 internal sealed class WindowsUpdateManager : IDisposable
 {
     private static readonly Uri LatestReleaseApi = new(
-        "https://api.github.com/repos/gaofeng21cn/codex-tps/releases/latest");
+        "https://api.github.com/repos/gaofeng21cn/opl-fleet-agent/releases/latest");
     private readonly HttpClient httpClient;
     private readonly bool ownsHttpClient;
     private readonly SemaphoreSlim operationLock = new(1, 1);

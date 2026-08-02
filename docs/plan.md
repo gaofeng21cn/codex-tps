@@ -14,9 +14,9 @@
 - [x] The menu bar follows the persisted panel window without extra label text.
 - [x] Automatic release checks and a user-confirmed update path are implemented.
 - [x] `v0.2.0` is published and verified through a real remote update install.
-- [ ] OPL Fleet Agent compatibility envelope is shipped without changing bundle,
-  repository, discovery, or upgrade identities.
-- [ ] Agent authority remains local observation/doctor/constraints/receipts only;
+- [x] OPL Fleet Agent compatibility envelope is shipped while bundle, discovery,
+  installer, and upgrade identities remain compatible across the repository rename.
+- [x] Agent authority remains local observation/doctor/constraints/receipts only;
   OPL Flow and the private Fleet Controller retain registry, policy, admission,
   lease, and dispatch authority.
 
@@ -31,8 +31,9 @@
   cadence persistence, accessibility labels, and non-overlapping layout.
 - `/Applications/Codex TPS.app` passed plist and ad-hoc signature checks,
   launched as an `LSUIElement`, and had no network sockets.
-- `gaofeng21cn/codex-tps` was created as a public repository; local and remote
-  `main` SHAs matched after the initial push.
+- `gaofeng21cn/codex-tps` was the original public repository. The canonical source
+  moved to `gaofeng21cn/opl-fleet-agent`; a read-only legacy bridge preserves the
+  established updater path for clients released before the rename.
 - `v0.1.0` published a checksum-verified universal DMG. The documented remote
   one-command installer installed, launched, and passed signature, architecture,
   version, and no-network-socket readback.

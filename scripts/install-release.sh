@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-REPOSITORY="gaofeng21cn/codex-tps"
+REPOSITORY="gaofeng21cn/opl-fleet-agent"
 EXPECTED_TEAM_ID="SVVC4TA784"
 EXPECTED_BUNDLE_ID="io.github.gaofeng21cn.codex-tps"
 INSTALL_DIR="${CODEX_TPS_INSTALL_DIR:-/Applications}"

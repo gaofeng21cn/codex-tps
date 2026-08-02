@@ -217,11 +217,11 @@ jobs:
           cat >release-notes.md <<'EOF'
           ## macOS
 
-          Codex TPS now presents itself as **OPL Fleet Agent · Codex TPS** and emits the strict Fleet Agent compatibility envelope in Local, Direct, and Fleet-compatible Gateway modes. The envelope carries only bounded aggregate workload, host, network, capability, and authority metadata; conversation content and session identifiers never leave the machine. The read-only `_codex-tps._tcp` Direct provider and existing update identity remain compatible. `Codex-TPS.dmg` remains Developer ID signed, notarized, stapled, and checksum verified.
+          OPL Fleet Agent · Codex TPS now follows the canonical `opl-fleet-agent` source and release repository. Version 0.2.28 is the repository-identity bridge: the existing Bundle ID, asset names, installer, `_codex-tps._tcp` Direct provider, and user-confirmed update behavior remain unchanged. A same-byte legacy release keeps older `codex-tps` clients on a one-step path to this bridge. `Codex-TPS.dmg` remains Developer ID signed, notarized, stapled, and checksum verified.
 
           ## Windows
 
-          The Windows tray app now presents itself as **OPL Fleet Agent · Codex TPS** and sends the same strict Fleet Agent compatibility envelope through the existing signed Gateway push path while preserving the current installer, package, and upgrade identities. The Direct LAN server is not enabled on Windows in this release. The installer is still not Authenticode-signed and may show an unknown-publisher warning; verify the published SHA-256 before running it.
+          The Windows tray app uses the same canonical repository and legacy bridge while preserving its current install directory, package identity, asset names, and user-confirmed updater. The Direct LAN server is not enabled on Windows in this release. The installer is still not Authenticode-signed and may show an unknown-publisher warning; verify the published SHA-256 before running it.
           EOF
           gh release create "$GITHUB_REF_NAME" \
             release-assets/Codex-TPS.dmg \

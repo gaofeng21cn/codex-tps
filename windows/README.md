@@ -53,7 +53,7 @@ in the network payload. The app contains no analytics or account login.
 ## Install the release
 
 Download these two files from the
-[latest GitHub Release](https://github.com/gaofeng21cn/codex-tps/releases/latest):
+[latest GitHub Release](https://github.com/gaofeng21cn/opl-fleet-agent/releases/latest):
 
 ```text
 Codex-TPS-Windows-win-x64-Setup.exe
@@ -112,7 +112,7 @@ windows/dist/Codex-TPS-Windows-win-x64.zip.sha256
 To build the standard installer, also install Inno Setup 6 and run:
 
 ```powershell
-pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.27
+pwsh ./windows/scripts/build-installer.ps1 -Runtime win-x64 -Version 0.2.28
 ```
 
 This additionally creates:

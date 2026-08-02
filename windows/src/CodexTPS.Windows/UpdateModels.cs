@@ -92,6 +92,11 @@ internal static class GitHubReleaseParser
 {
     private const string InstallerName = "Codex-TPS-Windows-win-x64-Setup.exe";
     private const string ChecksumName = InstallerName + ".sha256";
+    private static readonly string[] AllowedRepositories =
+    [
+        "opl-fleet-agent",
+        "codex-tps",
+    ];
 
     public static AppRelease Parse(string json)
     {
@@ -137,13 +142,19 @@ internal static class GitHubReleaseParser
         return new AppRelease(tagName, version, installerUri, checksumUri);
     }
 
-    private static bool IsAllowedAsset(Uri uri, string tagName, string fileName) =>
-        uri.Scheme == Uri.UriSchemeHttps &&
-        string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(
+    private static bool IsAllowedAsset(Uri uri, string tagName, string fileName)
+    {
+        if (uri.Scheme != Uri.UriSchemeHttps ||
+            !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return AllowedRepositories.Any(repository => string.Equals(
             uri.AbsolutePath,
-            $"/gaofeng21cn/codex-tps/releases/download/{tagName}/{fileName}",
-            StringComparison.Ordinal);
+            $"/gaofeng21cn/{repository}/releases/download/{tagName}/{fileName}",
+            StringComparison.Ordinal));
+    }
 }
 
 internal static class UpdatePackageVerifier

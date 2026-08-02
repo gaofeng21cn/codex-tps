@@ -30,9 +30,13 @@ final class UpdateManager: ObservableObject {
 
   private static let checkInterval: Duration = .seconds(6 * 60 * 60)
   private static let latestReleaseURL = URL(
-    string: "https://github.com/gaofeng21cn/codex-tps/releases/latest")!
+    string: "https://github.com/gaofeng21cn/opl-fleet-agent/releases/latest")!
   private static let releaseDownloadURL = URL(
-    string: "https://github.com/gaofeng21cn/codex-tps/releases/download")!
+    string: "https://github.com/gaofeng21cn/opl-fleet-agent/releases/download")!
+  private static let allowedReleasePagePrefixes = [
+    "/gaofeng21cn/opl-fleet-agent/releases/tag/",
+    "/gaofeng21cn/codex-tps/releases/tag/",
+  ]
 
   init(bundle: Bundle = .main, session: URLSession = .shared) {
     let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
@@ -219,7 +223,7 @@ final class UpdateManager: ObservableObject {
   private static func isAllowedReleasePage(_ url: URL) -> Bool {
     url.scheme == "https"
       && url.host == "github.com"
-      && url.path.hasPrefix("/gaofeng21cn/codex-tps/releases/tag/")
+      && allowedReleasePagePrefixes.contains { url.path.hasPrefix($0) }
   }
 
   private static func message(for error: Error) -> String {

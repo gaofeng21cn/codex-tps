@@ -51,10 +51,24 @@ public sealed class UpdateModelsTests
     }
 
     [Fact]
+    public void AcceptsLegacyBridgeRepositoryAssets()
+    {
+        var json = ReleaseJson("v0.2.28").Replace(
+            "https://github.com/gaofeng21cn/opl-fleet-agent/",
+            "https://github.com/gaofeng21cn/codex-tps/",
+            StringComparison.Ordinal);
+
+        var release = GitHubReleaseParser.Parse(json);
+
+        Assert.Equal("v0.2.28", release.TagName);
+        Assert.Equal("codex-tps", release.InstallerUri.Segments[2].TrimEnd('/'));
+    }
+
+    [Fact]
     public void RejectsReleaseAssetOutsideCanonicalRepository()
     {
         var json = ReleaseJson("v0.2.20").Replace(
-            "https://github.com/gaofeng21cn/codex-tps/",
+            "https://github.com/gaofeng21cn/opl-fleet-agent/",
             "https://github.com/example/codex-tps/",
             StringComparison.Ordinal);
 
@@ -95,11 +109,11 @@ public sealed class UpdateModelsTests
           "assets": [
             {
               "name": "Codex-TPS-Windows-win-x64-Setup.exe",
-              "browser_download_url": "https://github.com/gaofeng21cn/codex-tps/releases/download/{{tag}}/Codex-TPS-Windows-win-x64-Setup.exe"
+              "browser_download_url": "https://github.com/gaofeng21cn/opl-fleet-agent/releases/download/{{tag}}/Codex-TPS-Windows-win-x64-Setup.exe"
             },
             {
               "name": "Codex-TPS-Windows-win-x64-Setup.exe.sha256",
-              "browser_download_url": "https://github.com/gaofeng21cn/codex-tps/releases/download/{{tag}}/Codex-TPS-Windows-win-x64-Setup.exe.sha256"
+              "browser_download_url": "https://github.com/gaofeng21cn/opl-fleet-agent/releases/download/{{tag}}/Codex-TPS-Windows-win-x64-Setup.exe.sha256"
             }
           ]
         }

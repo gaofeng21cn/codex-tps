@@ -12,8 +12,8 @@
 <p align="center">macOS 菜单栏 · Windows 系统托盘 · Ambient Ops Gateway 协同</p>
 
 <p align="center">
-  <a href="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml"><img src="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml/badge.svg" alt="持续集成"></a>
-  <a href="https://github.com/gaofeng21cn/codex-tps/releases/latest"><img src="https://img.shields.io/github/v/release/gaofeng21cn/codex-tps" alt="最新版本"></a>
+  <a href="https://github.com/gaofeng21cn/opl-fleet-agent/actions/workflows/ci.yml"><img src="https://github.com/gaofeng21cn/opl-fleet-agent/actions/workflows/ci.yml/badge.svg" alt="持续集成"></a>
+  <a href="https://github.com/gaofeng21cn/opl-fleet-agent/releases/latest"><img src="https://img.shields.io/github/v/release/gaofeng21cn/opl-fleet-agent" alt="最新版本"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT 许可证"></a>
   <img src="https://img.shields.io/badge/macOS-13%2B-black.svg" alt="macOS 13 或更高版本">
 </p>
@@ -71,7 +71,7 @@ Codex 通常在一次模型请求完成后才写入用量，因此这里显示�
 一键安装最新正式版：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/opl-fleet-agent/main/scripts/install-release.sh | bash
 ```
 
 使用 Homebrew：
@@ -80,7 +80,9 @@ curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/
 brew install --cask gaofeng21cn/codex-tps/codex-tps
 ```
 
-也可以从[最新发布版本](https://github.com/gaofeng21cn/codex-tps/releases/latest)
+Homebrew Tap 保留原名称，以兼容既有安装和更新命令。
+
+也可以从[最新发布版本](https://github.com/gaofeng21cn/opl-fleet-agent/releases/latest)
 下载 `Codex-TPS.dmg`，打开后拖入“应用程序”。
 
 正式版同时支持 Apple Silicon 和 Intel Mac，使用 Apple Developer ID 签名并
@@ -90,7 +92,7 @@ brew install --cask gaofeng21cn/codex-tps/codex-tps
 默认安装到 `/Applications` 并启动。也可以安装到当前用户目录且不立即启动：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | \
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/opl-fleet-agent/main/scripts/install-release.sh | \
   CODEX_TPS_INSTALL_DIR="$HOME/Applications" CODEX_TPS_NO_LAUNCH=1 bash
 ```
 
@@ -99,7 +101,7 @@ curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/
 Windows 版是基于 .NET 8 WinForms 的 Windows 11 原生系统托盘应用。标准安装器
 是自包含的，不需要额外安装 .NET 运行时。
 
-从[最新发布版本](https://github.com/gaofeng21cn/codex-tps/releases/latest)下载：
+从[最新发布版本](https://github.com/gaofeng21cn/opl-fleet-agent/releases/latest)下载：
 
 - `Codex-TPS-Windows-win-x64-Setup.exe`
 - `Codex-TPS-Windows-win-x64-Setup.exe.sha256`
@@ -136,7 +138,7 @@ WSL UNC 路径，例如 `\\wsl.localhost\Ubuntu\home\<user>\.codex`。
 
 ### 与 Ambient Ops 协同
 
-[Ambient Ops](https://github.com/gaofeng21cn/ambient-ops) 用于把多台电脑上的 Codex
+[Ambient Ops](https://github.com/gaofeng21cn/opl-fleet-cockpit) 用于把多台电脑上的 Codex
 汇总指标和局域网网络状态集中显示在浏览器或 Android 常驻屏上。
 
 macOS 版 Codex TPS 会发布 `_codex-tps._tcp.local` 和只读本机状态端点，Ambient
@@ -182,14 +184,14 @@ Agent 应优先安装已发布、已校验的正式版，而不是把本地构�
 macOS 正式版：
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/opl-fleet-agent/main/scripts/install-release.sh | bash
 ```
 
 macOS 从源码安装：
 
 ```bash
-git clone https://github.com/gaofeng21cn/codex-tps.git
-cd codex-tps
+git clone https://github.com/gaofeng21cn/opl-fleet-agent.git
+cd opl-fleet-agent
 ./scripts/install.sh
 ```
 
@@ -269,7 +271,7 @@ dotnet test windows/tests/CodexTPS.Core.Tests -c Release
 
 - [统计与架构](docs/architecture.md)
 - [Windows 原生版](windows/README.md)
-- [Ambient Ops](https://github.com/gaofeng21cn/ambient-ops)
+- [Ambient Ops](https://github.com/gaofeng21cn/opl-fleet-cockpit)
 - [项目 Agent 合同](AGENTS.md)
 
 ```bash

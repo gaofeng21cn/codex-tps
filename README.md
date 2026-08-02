@@ -12,8 +12,8 @@
 <p align="center">macOS menu bar · Windows system tray · Ambient Ops Gateway integration</p>
 
 <p align="center">
-  <a href="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml"><img src="https://github.com/gaofeng21cn/codex-tps/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/gaofeng21cn/codex-tps/releases/latest"><img src="https://img.shields.io/github/v/release/gaofeng21cn/codex-tps" alt="Latest release"></a>
+  <a href="https://github.com/gaofeng21cn/opl-fleet-agent/actions/workflows/ci.yml"><img src="https://github.com/gaofeng21cn/opl-fleet-agent/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/gaofeng21cn/opl-fleet-agent/releases/latest"><img src="https://img.shields.io/github/v/release/gaofeng21cn/opl-fleet-agent" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/macOS-13%2B-black.svg" alt="macOS 13 or later">
 </p>
@@ -71,7 +71,7 @@ Requirements: macOS 13 Ventura or later. Codex TPS needs no API key of its own.
 Install the latest release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/opl-fleet-agent/main/scripts/install-release.sh | bash
 ```
 
 With Homebrew:
@@ -80,8 +80,11 @@ With Homebrew:
 brew install --cask gaofeng21cn/codex-tps/codex-tps
 ```
 
+The Homebrew tap keeps its existing name so installed casks and update commands
+remain compatible with earlier releases.
+
 You can also download `Codex-TPS.dmg` from the
-[latest release](https://github.com/gaofeng21cn/codex-tps/releases/latest), open it,
+[latest release](https://github.com/gaofeng21cn/opl-fleet-agent/releases/latest), open it,
 and drag the app into Applications.
 
 Release builds are universal for Apple Silicon and Intel, signed with Apple Developer
@@ -92,7 +95,7 @@ the previous app.
 Install for the current user without launching:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | \
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/opl-fleet-agent/main/scripts/install-release.sh | \
   CODEX_TPS_INSTALL_DIR="$HOME/Applications" CODEX_TPS_NO_LAUNCH=1 bash
 ```
 
@@ -102,7 +105,7 @@ The Windows edition is a native .NET 8 WinForms tray app for Windows 11. Its sta
 installer is self-contained and does not require a separate .NET runtime.
 
 Download both files from the
-[latest release](https://github.com/gaofeng21cn/codex-tps/releases/latest):
+[latest release](https://github.com/gaofeng21cn/opl-fleet-agent/releases/latest):
 
 - `Codex-TPS-Windows-win-x64-Setup.exe`
 - `Codex-TPS-Windows-win-x64-Setup.exe.sha256`
@@ -139,7 +142,7 @@ accessible WSL UNC path such as `\\wsl.localhost\Ubuntu\home\<user>\.codex`.
 
 ### Ambient Ops integration
 
-[Ambient Ops](https://github.com/gaofeng21cn/ambient-ops) combines aggregate Codex
+[Ambient Ops](https://github.com/gaofeng21cn/opl-fleet-cockpit) combines aggregate Codex
 state from multiple computers with trusted-LAN network telemetry for browser and
 Android ambient displays.
 
@@ -194,14 +197,14 @@ is not the same terminal state as an installed release.
 Install the macOS release:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/codex-tps/main/scripts/install-release.sh | bash
+curl -fsSL https://raw.githubusercontent.com/gaofeng21cn/opl-fleet-agent/main/scripts/install-release.sh | bash
 ```
 
 Build and install from source on macOS:
 
 ```bash
-git clone https://github.com/gaofeng21cn/codex-tps.git
-cd codex-tps
+git clone https://github.com/gaofeng21cn/opl-fleet-agent.git
+cd opl-fleet-agent
 ./scripts/install.sh
 ```
 
@@ -284,7 +287,7 @@ Tests, a local build, or discovery of a release are not installed-runtime accept
 
 - [Architecture and accounting](docs/architecture.md)
 - [Native Windows app](windows/README.md)
-- [Ambient Ops](https://github.com/gaofeng21cn/ambient-ops)
+- [Ambient Ops](https://github.com/gaofeng21cn/opl-fleet-cockpit)
 - [Repository Agent contract](AGENTS.md)
 
 ```bash

@@ -58,11 +58,11 @@ public sealed class WindowsUpdateManagerTests
           "assets": [
             {
               "name": "Codex-TPS-Windows-win-x64-Setup.exe",
-              "browser_download_url": "https://github.com/gaofeng21cn/codex-tps/releases/download/{{tag}}/Codex-TPS-Windows-win-x64-Setup.exe"
+              "browser_download_url": "https://github.com/gaofeng21cn/opl-fleet-agent/releases/download/{{tag}}/Codex-TPS-Windows-win-x64-Setup.exe"
             },
             {
               "name": "Codex-TPS-Windows-win-x64-Setup.exe.sha256",
-              "browser_download_url": "https://github.com/gaofeng21cn/codex-tps/releases/download/{{tag}}/Codex-TPS-Windows-win-x64-Setup.exe.sha256"
+              "browser_download_url": "https://github.com/gaofeng21cn/opl-fleet-agent/releases/download/{{tag}}/Codex-TPS-Windows-win-x64-Setup.exe.sha256"
             }
           ]
         }
